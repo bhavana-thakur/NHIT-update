@@ -10,6 +10,9 @@ import 'package:ppv_components/features/bank_rtgs_neft/widget/rtgs_table_page.da
 import 'package:ppv_components/features/payment_notes/widget/approval_table.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/models/bank_models/bank_letter_approval_rules_model.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/data/bank_dummydata/bank_letter_approval_rules_dummy.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/models/bank_models/escrow_account_model.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/data/bank_dummydata/escrow_accounts_dummy.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/widget/escrow_accounts_page.dart';
 
 class BankMainPage extends StatefulWidget {
   const BankMainPage({super.key});
@@ -29,6 +32,11 @@ class _BankMainPageState extends State<BankMainPage> {
   // Approval rules list from your dummy data
   List<BankLetterApprovalRule> approvalData = List<BankLetterApprovalRule>.from(
     bankLetterApprovalRulesDummyData,
+  );
+
+  // Escrow accounts list
+  List<EscrowAccount> escrowAccounts = List<EscrowAccount>.from(
+    escrowAccountsDummyData,
   );
 
   @override
@@ -117,43 +125,49 @@ class _BankMainPageState extends State<BankMainPage> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.only(left: 12),
-                    child: TabsBar(
-                      tabs: const [
-                        'RTGS/NEFT',
-                        'New RTGS/NEFT',
-                        'Approval Rules',
-                        'Approval Flow',
-                      ],
-                      selectedIndex: tabIndex,
-                      onChanged: (idx) => setState(() => tabIndex = idx),
-                    ),
-                  ),
-                  const Spacer(),
-                  if (tabIndex == 0) //  search only for list
-                    SizedBox(
-                      width: 250,
-                      child: TextField(
-                        decoration: InputDecoration(
-                          contentPadding: const EdgeInsets.symmetric(
-                            vertical: 16,
-                            horizontal: 12,
-                          ),
-                          hintText: 'Search RTGS/NEFT',
-                          prefixIcon: const Icon(Icons.search),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(20),
-                            borderSide: BorderSide(
-                              color: colorScheme.outline,
-                              width: 0.25,
-                            ),
-                          ),
-                          isDense: true,
-                        ),
-                        onChanged: updateSearch,
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 12),
+                      child: TabsBar(
+                        tabs: const [
+                          'RTGS/NEFT',
+                          'New RTGS/NEFT',
+                          'Approval Rules',
+                          'Approval Flow',
+                          'Escrow Accounts',
+                        ],
+                        selectedIndex: tabIndex,
+                        onChanged: (idx) => setState(() => tabIndex = idx),
                       ),
                     ),
+                  ),
+                  if (tabIndex == 0) ...[
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 250),
+                        child: TextField(
+                          decoration: InputDecoration(
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 16,
+                              horizontal: 12,
+                            ),
+                            hintText: 'Search RTGS/NEFT',
+                            prefixIcon: const Icon(Icons.search),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              borderSide: BorderSide(
+                                color: colorScheme.outline,
+                                width: 0.25,
+                              ),
+                            ),
+                            isDense: true,
+                          ),
+                          onChanged: updateSearch,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -191,6 +205,11 @@ class _BankMainPageState extends State<BankMainPage> {
 
       case 3:
         return const ApprovalFlowPage();
+
+      case 4:
+        return EscrowAccountsPage(
+          escrowAccounts: escrowAccounts,
+        );
 
       default:
         return const SizedBox.shrink();

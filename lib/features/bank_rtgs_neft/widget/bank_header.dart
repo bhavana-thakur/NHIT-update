@@ -29,8 +29,8 @@ class BankHeader extends StatelessWidget {
         subtitle: 'Set rules and policies for bank accounts',
       ),
       _HeaderData(
-        title: 'Bank Rules',
-        subtitle: 'Set rules and policies for bank accounts',
+        title: 'Escrow Accounts',
+        subtitle: 'Manage your organization\'s escrow accounts and fund transfers',
       ),
     ];
 
