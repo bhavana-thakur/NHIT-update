@@ -4,6 +4,7 @@ import 'package:ppv_components/common_widgets/button/outlined_button.dart';
 import 'package:ppv_components/common_widgets/custom_table.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/bank_letters_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/escrow_accounts_page.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/widget/create_transfer_page.dart';
 
 class AccountTransfersPage extends StatefulWidget {
   const AccountTransfersPage({super.key});
@@ -153,7 +154,14 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
             runSpacing: 12,
             children: [
               PrimaryButton(
-                onPressed: () {},
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const CreateTransferPage(),
+                    ),
+                  );
+                },
                 icon: Icons.add,
                 label: 'New Transfer',
               ),

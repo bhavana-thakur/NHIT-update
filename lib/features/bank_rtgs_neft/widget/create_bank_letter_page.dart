@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ppv_components/common_widgets/button/primary_button.dart';
 import 'package:ppv_components/common_widgets/button/outlined_button.dart';
+import 'package:ppv_components/common_widgets/custom_dropdown.dart';
 
 class CreateBankLetterPage extends StatefulWidget {
   const CreateBankLetterPage({super.key});
@@ -13,6 +14,7 @@ class _CreateBankLetterPageState extends State<CreateBankLetterPage> {
   final _formKey = GlobalKey<FormState>();
   String? selectedLetterType;
   String? hoveredLetterType;
+  String selectedStatus = 'Draft';
   
   // Form controllers
   final _transferController = TextEditingController();
@@ -22,7 +24,6 @@ class _CreateBankLetterPageState extends State<CreateBankLetterPage> {
   final _bankAddressController = TextEditingController();
   final _subjectController = TextEditingController();
   final _letterContentController = TextEditingController();
-  final _statusController = TextEditingController(text: 'Draft');
 
   @override
   void dispose() {
@@ -33,7 +34,6 @@ class _CreateBankLetterPageState extends State<CreateBankLetterPage> {
     _bankAddressController.dispose();
     _subjectController.dispose();
     _letterContentController.dispose();
-    _statusController.dispose();
     super.dispose();
   }
 
@@ -436,12 +436,16 @@ class _CreateBankLetterPageState extends State<CreateBankLetterPage> {
         ),
         const SizedBox(height: 16),
         
-        _buildTextField(
+        _buildDropdownField(
           label: 'Status',
-          hint: 'Draft',
-          controller: _statusController,
+          value: selectedStatus,
+          items: ['Draft', 'Submit for Approval'],
           isRequired: true,
-          enabled: false,
+          onChanged: (value) {
+            setState(() {
+              selectedStatus = value ?? 'Draft';
+            });
+          },
         ),
       ],
     );
@@ -524,6 +528,50 @@ class _CreateBankLetterPageState extends State<CreateBankLetterPage> {
                   return null;
                 }
               : null,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDropdownField({
+    required String label,
+    required String value,
+    required List<String> items,
+    required ValueChanged<String?> onChanged,
+    bool isRequired = false,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurface,
+              ),
+            ),
+            if (isRequired) ...[
+              const SizedBox(width: 4),
+              Text(
+                '*',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        CustomDropdown(
+          value: value,
+          items: items,
+          hint: 'Select $label',
+          onChanged: onChanged,
         ),
       ],
     );
