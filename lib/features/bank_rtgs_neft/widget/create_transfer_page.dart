@@ -30,12 +30,65 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
   // Dynamic lists for multiple accounts
   List<Map<String, dynamic>> sourceAccounts = [];
   List<Map<String, dynamic>> destinationAccounts = [];
+  
+  // Mock account data - replace with actual data
+  final List<String> availableAccounts = [
+    'Main Account - ACC001',
+    'Savings Account - ACC002',
+    'Business Account - ACC003',
+    'Project Account - ACC004',
+  ];
+  
+  final List<String> availableVendors = [
+    'Vendor A - VEN001',
+    'Vendor B - VEN002',
+    'Vendor C - VEN003',
+  ];
+  
+  void _addSourceAccount() {
+    setState(() {
+      sourceAccounts.add({
+        'account': null,
+        'amount': TextEditingController(),
+      });
+    });
+  }
+  
+  void _removeSourceAccount(int index) {
+    setState(() {
+      sourceAccounts[index]['amount'].dispose();
+      sourceAccounts.removeAt(index);
+    });
+  }
+  
+  void _addDestinationAccount() {
+    setState(() {
+      destinationAccounts.add({
+        'account': null,
+        'amount': TextEditingController(),
+      });
+    });
+  }
+  
+  void _removeDestinationAccount(int index) {
+    setState(() {
+      destinationAccounts[index]['amount'].dispose();
+      destinationAccounts.removeAt(index);
+    });
+  }
 
   @override
   void dispose() {
     _transferAmountController.dispose();
     _purposeController.dispose();
     _remarksController.dispose();
+    // Dispose dynamic controllers
+    for (var account in sourceAccounts) {
+      account['amount']?.dispose();
+    }
+    for (var account in destinationAccounts) {
+      account['amount']?.dispose();
+    }
     super.dispose();
   }
 
@@ -244,12 +297,23 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
             ),
             const SizedBox(height: 16),
 
-            // Transfer Type Cards
-            isSmallScreen
-                ? Column(
+            // Transfer Type Cards - Responsive layout
+            LayoutBuilder(
+              builder: (context, constraints) {
+                // Calculate how many cards can fit
+                final cardWidth = 340.0; // Fixed card width matching the image
+                final spacing = 16.0;
+                final availableWidth = constraints.maxWidth;
+                final cardsPerRow = (availableWidth / (cardWidth + spacing)).floor();
+                
+                if (cardsPerRow >= 2) {
+                  // Show cards in a row if 2 or more can fit
+                  return Wrap(
+                    spacing: spacing,
+                    runSpacing: 16,
                     children: transferTypes.map((type) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
+                      return SizedBox(
+                        width: cardWidth,
                         child: _buildTransferTypeCard(
                           context,
                           type: type['type'],
@@ -259,24 +323,27 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                         ),
                       );
                     }).toList(),
-                  )
-                : Row(
+                  );
+                } else {
+                  // Show cards in a column with full width if only 1 can fit
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: transferTypes.map((type) {
-                      return Expanded(
-                        flex: 4,
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 12),
-                          child: _buildTransferTypeCard(
-                            context,
-                            type: type['type'],
-                            icon: type['icon'],
-                            color: type['color'],
-                            description: type['description'],
-                          ),
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: _buildTransferTypeCard(
+                          context,
+                          type: type['type'],
+                          icon: type['icon'],
+                          color: type['color'],
+                          description: type['description'],
                         ),
                       );
                     }).toList(),
-                  ),
+                  );
+                }
+              },
+            ),
 
             // Transfer Mode Section (only show if transfer type is selected)
             if (selectedTransferType != null) ...[
@@ -302,12 +369,23 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
               ),
               const SizedBox(height: 16),
 
-              // Transfer Mode Cards
-              isSmallScreen
-                  ? Column(
+              // Transfer Mode Cards - Responsive layout
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  // Calculate how many cards can fit
+                  final cardWidth = 340.0; // Fixed card width matching the image
+                  final spacing = 16.0;
+                  final availableWidth = constraints.maxWidth;
+                  final cardsPerRow = (availableWidth / (cardWidth + spacing)).floor();
+                  
+                  if (cardsPerRow >= 3) {
+                    // Show all 3 cards in a row
+                    return Wrap(
+                      spacing: spacing,
+                      runSpacing: 16,
                       children: transferModes.map((mode) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
+                        return SizedBox(
+                          width: cardWidth,
                           child: _buildTransferModeCard(
                             context,
                             mode: mode['mode'],
@@ -317,24 +395,45 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                           ),
                         );
                       }).toList(),
-                    )
-                  : Row(
+                    );
+                  } else if (cardsPerRow == 2) {
+                    // Show 2 cards per row, 3rd card on next row
+                    return Wrap(
+                      spacing: spacing,
+                      runSpacing: 16,
                       children: transferModes.map((mode) {
-                        return Expanded(
-                          flex: 4,
-                          child: Padding(
-                            padding: const EdgeInsets.only(right: 12),
-                            child: _buildTransferModeCard(
-                              context,
-                              mode: mode['mode'],
-                              icon: mode['icon'],
-                              color: mode['color'],
-                              description: mode['description'],
-                            ),
+                        return SizedBox(
+                          width: cardWidth,
+                          child: _buildTransferModeCard(
+                            context,
+                            mode: mode['mode'],
+                            icon: mode['icon'],
+                            color: mode['color'],
+                            description: mode['description'],
                           ),
                         );
                       }).toList(),
-                    ),
+                    );
+                  } else {
+                    // Show cards in a column with full width if only 1 can fit
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: transferModes.map((mode) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: _buildTransferModeCard(
+                            context,
+                            mode: mode['mode'],
+                            icon: mode['icon'],
+                            color: mode['color'],
+                            description: mode['description'],
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  }
+                },
+              ),
             ],
 
             // Dynamic Form Fields based on selected transfer mode
@@ -394,7 +493,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           _buildDropdownField(
             label: 'Source Account',
             value: selectedSourceAccount,
-            items: ['Select source account'],
+            items: availableAccounts,
             isRequired: true,
             onChanged: (value) {
               setState(() {
@@ -406,7 +505,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           _buildDropdownField(
             label: 'Destination Account',
             value: selectedDestinationAccount,
-            items: ['Select destination account'],
+            items: availableAccounts,
             isRequired: true,
             onChanged: (value) {
               setState(() {
@@ -419,10 +518,10 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
         // One to Many Mode - Internal Transfer
         if (selectedTransferMode == 'One to Many' && selectedTransferType == 'Internal Transfer') ...[
           _buildDropdownField(
-            label: 'Select source account',
+            label: 'Source Account',
             value: selectedSourceAccount,
-            items: ['Select source account'],
-            isRequired: false,
+            items: availableAccounts,
+            isRequired: true,
             onChanged: (value) {
               setState(() {
                 selectedSourceAccount = value;
@@ -444,7 +543,8 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           ),
           const SizedBox(height: 12),
           // Destination accounts list
-          ...List.generate(2, (index) {
+          if (destinationAccounts.isNotEmpty)
+            ...List.generate(destinationAccounts.length, (index) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Row(
@@ -465,10 +565,14 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                             ),
                           ),
                         CustomDropdown(
-                          value: null,
-                          items: ['Select account'],
+                          value: destinationAccounts[index]['account'],
+                          items: availableAccounts,
                           hint: 'Select account',
-                          onChanged: (value) {},
+                          onChanged: (value) {
+                            setState(() {
+                              destinationAccounts[index]['account'] = value;
+                            });
+                          },
                         ),
                       ],
                     ),
@@ -489,6 +593,8 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                             ),
                           ),
                         TextFormField(
+                          controller: destinationAccounts[index]['amount'],
+                          keyboardType: TextInputType.number,
                           decoration: InputDecoration(
                             hintText: '0.00',
                             prefixText: '₹  ',
@@ -518,7 +624,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                     children: [
                       if (index == 0) const SizedBox(height: 32),
                       IconButton(
-                        onPressed: () {},
+                        onPressed: () => _removeDestinationAccount(index),
                         icon: const Icon(Icons.delete_outline),
                         color: Colors.red,
                         style: IconButton.styleFrom(
@@ -536,9 +642,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           }),
           const SizedBox(height: 8),
           OutlineButton(
-            onPressed: () {
-              // Add destination account logic
-            },
+            onPressed: _addDestinationAccount,
             icon: Icons.add,
             label: 'Add Destination Account',
           ),
@@ -560,7 +664,8 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           ),
           const SizedBox(height: 12),
           // Source accounts list
-          ...List.generate(1, (index) {
+          if (sourceAccounts.isNotEmpty)
+            ...List.generate(sourceAccounts.length, (index) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Row(
@@ -581,10 +686,14 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                             ),
                           ),
                         CustomDropdown(
-                          value: null,
-                          items: ['Select account'],
+                          value: sourceAccounts[index]['account'],
+                          items: availableAccounts,
                           hint: 'Select account',
-                          onChanged: (value) {},
+                          onChanged: (value) {
+                            setState(() {
+                              sourceAccounts[index]['account'] = value;
+                            });
+                          },
                         ),
                       ],
                     ),
@@ -605,6 +714,8 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                             ),
                           ),
                         TextFormField(
+                          controller: sourceAccounts[index]['amount'],
+                          keyboardType: TextInputType.number,
                           decoration: InputDecoration(
                             hintText: '0.00',
                             prefixText: '₹  ',
@@ -642,9 +753,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           }),
           const SizedBox(height: 8),
           OutlineButton(
-            onPressed: () {
-              // Add source account logic
-            },
+            onPressed: _addSourceAccount,
             icon: Icons.add,
             label: 'Add Source Account',
           ),
@@ -663,7 +772,8 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           ),
           const SizedBox(height: 12),
           // Destination accounts list
-          ...List.generate(2, (index) {
+          if (destinationAccounts.isNotEmpty)
+            ...List.generate(destinationAccounts.length, (index) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Row(
@@ -684,10 +794,14 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                             ),
                           ),
                         CustomDropdown(
-                          value: null,
-                          items: ['Select account'],
+                          value: destinationAccounts[index]['account'],
+                          items: availableAccounts,
                           hint: 'Select account',
-                          onChanged: (value) {},
+                          onChanged: (value) {
+                            setState(() {
+                              destinationAccounts[index]['account'] = value;
+                            });
+                          },
                         ),
                       ],
                     ),
@@ -708,6 +822,8 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                             ),
                           ),
                         TextFormField(
+                          controller: destinationAccounts[index]['amount'],
+                          keyboardType: TextInputType.number,
                           decoration: InputDecoration(
                             hintText: '0.00',
                             prefixText: '₹  ',
@@ -737,7 +853,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                     children: [
                       if (index == 0) const SizedBox(height: 32),
                       IconButton(
-                        onPressed: () {},
+                        onPressed: () => _removeDestinationAccount(index),
                         icon: const Icon(Icons.delete_outline),
                         color: Colors.red,
                         style: IconButton.styleFrom(
@@ -755,9 +871,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           }),
           const SizedBox(height: 8),
           OutlineButton(
-            onPressed: () {
-              // Add destination account logic
-            },
+            onPressed: _addDestinationAccount,
             icon: Icons.add,
             label: 'Add Destination Account',
           ),
@@ -768,7 +882,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           _buildDropdownField(
             label: 'Source Account',
             value: selectedSourceAccount,
-            items: ['Select source account'],
+            items: availableAccounts,
             isRequired: true,
             onChanged: (value) {
               setState(() {
@@ -780,7 +894,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           _buildDropdownField(
             label: 'Vendor',
             value: selectedVendor,
-            items: ['Select vendor'],
+            items: availableVendors,
             isRequired: true,
             onChanged: (value) {
               setState(() {
@@ -795,7 +909,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           _buildDropdownField(
             label: 'Source Account',
             value: selectedSourceAccount,
-            items: ['Select source account'],
+            items: availableAccounts,
             isRequired: true,
             onChanged: (value) {
               setState(() {
@@ -804,25 +918,16 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
             },
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              Text(
-                'Vendor',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Text('*', style: TextStyle(color: Colors.red, fontSize: 16)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          OutlineButton(
-            onPressed: () {
-              // Add vendor logic
+          _buildDropdownField(
+            label: 'Vendor',
+            value: selectedVendor,
+            items: availableVendors,
+            isRequired: true,
+            onChanged: (value) {
+              setState(() {
+                selectedVendor = value;
+              });
             },
-            icon: Icons.add,
-            label: 'Add Vendor',
           ),
         ],
         
@@ -840,34 +945,121 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
               Text('*', style: TextStyle(color: Colors.red, fontSize: 16)),
             ],
           ),
+          const SizedBox(height: 12),
+          // Source accounts list
+          if (sourceAccounts.isNotEmpty)
+            ...List.generate(sourceAccounts.length, (index) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (index == 0)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              'Source Account',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        CustomDropdown(
+                          value: sourceAccounts[index]['account'],
+                          items: availableAccounts,
+                          hint: 'Select account',
+                          onChanged: (value) {
+                            setState(() {
+                              sourceAccounts[index]['account'] = value;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (index == 0)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              'Amount',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        TextFormField(
+                          controller: sourceAccounts[index]['amount'],
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            hintText: '0.00',
+                            prefixText: '₹  ',
+                            hintStyle: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    children: [
+                      if (index == 0) const SizedBox(height: 32),
+                      IconButton(
+                        onPressed: () => _removeSourceAccount(index),
+                        icon: const Icon(Icons.delete_outline),
+                        color: Colors.red,
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.red.withValues(alpha: 0.1),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }),
           const SizedBox(height: 8),
-          OutlineButton(
-            onPressed: () {
-              // Add source account logic
-            },
+          PrimaryButton(
+            onPressed: _addSourceAccount,
             icon: Icons.add,
             label: 'Add Source Account',
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              Text(
-                'Vendor',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Text('*', style: TextStyle(color: Colors.red, fontSize: 16)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          OutlineButton(
-            onPressed: () {
-              // Add vendor logic
+          _buildDropdownField(
+            label: 'Vendor',
+            value: selectedVendor,
+            items: availableVendors,
+            isRequired: true,
+            onChanged: (value) {
+              setState(() {
+                selectedVendor = value;
+              });
             },
-            icon: Icons.add,
-            label: 'Add Vendor',
           ),
         ],
         
@@ -1157,6 +1349,12 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
         onTap: () {
           setState(() {
             selectedTransferMode = mode;
+            // Clear dynamic lists and selections when changing transfer mode
+            sourceAccounts.clear();
+            destinationAccounts.clear();
+            selectedSourceAccount = null;
+            selectedDestinationAccount = null;
+            selectedVendor = null;
           });
         },
         borderRadius: BorderRadius.circular(12),
