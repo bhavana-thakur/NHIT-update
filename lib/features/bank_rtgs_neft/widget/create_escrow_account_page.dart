@@ -395,6 +395,11 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
                         hint: 'ENTER IFSC CODE',
                         isRequired: true,
                         textCapitalization: TextCapitalization.characters,
+                        maxLength: 11,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'[A-Z0-9]')),
+                          LengthLimitingTextInputFormatter(11),
+                        ],
                         validator: (value) {
                           if (value == null || value.isEmpty) {
                             return 'Please enter IFSC code';
@@ -405,7 +410,7 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
                           // IFSC format: First 4 chars alphabets, 5th char is 0, last 6 chars alphanumeric
                           final ifscRegex = RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$');
                           if (!ifscRegex.hasMatch(value)) {
-                            return 'Invalid IFSC code format';
+                            return 'Invalid IFSC code format (e.g., SBIN0001234)';
                           }
                           return null;
                         },
@@ -434,6 +439,11 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
                           hint: 'ENTER IFSC CODE',
                           isRequired: true,
                           textCapitalization: TextCapitalization.characters,
+                          maxLength: 11,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(RegExp(r'[A-Z0-9]')),
+                            LengthLimitingTextInputFormatter(11),
+                          ],
                           validator: (value) {
                             if (value == null || value.isEmpty) {
                               return 'Please enter IFSC code';
@@ -444,7 +454,7 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
                             // IFSC format: First 4 chars alphabets, 5th char is 0, last 6 chars alphanumeric
                             final ifscRegex = RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$');
                             if (!ifscRegex.hasMatch(value)) {
-                              return 'Invalid IFSC code format';
+                              return 'Invalid IFSC code format (e.g., SBIN0001234)';
                             }
                             return null;
                           },
@@ -610,9 +620,11 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
     required String hint,
     bool isRequired = false,
     int maxLines = 1,
+    int? maxLength,
     TextInputType? keyboardType,
     String? prefixText,
     TextCapitalization textCapitalization = TextCapitalization.none,
+    List<TextInputFormatter>? inputFormatters,
     String? Function(String?)? validator,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -644,12 +656,15 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
         TextFormField(
           controller: controller,
           maxLines: maxLines,
+          maxLength: maxLength,
           keyboardType: keyboardType,
           textCapitalization: textCapitalization,
+          inputFormatters: inputFormatters,
           validator: validator,
           decoration: InputDecoration(
             hintText: hint,
             prefixText: prefixText,
+            counterText: maxLength != null ? '' : null,
             hintStyle: TextStyle(
               color: colorScheme.onSurface.withValues(alpha: 0.5),
             ),
