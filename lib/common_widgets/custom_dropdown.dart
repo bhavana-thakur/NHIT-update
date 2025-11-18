@@ -21,7 +21,7 @@ class CustomDropdown extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       hint: Text(
         hint,
         style: TextStyle(

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:ppv_components/common_widgets/button/primary_button.dart';
-import 'package:ppv_components/common_widgets/button/outlined_button.dart';
+import 'package:ppv_components/common_widgets/button/secondary_button.dart';
 
 class CreateEscrowAccountPage extends StatefulWidget {
   const CreateEscrowAccountPage({super.key});
@@ -19,16 +19,25 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
   final _ifscCodeController = TextEditingController();
   final _initialBalanceController = TextEditingController();
   final _descriptionController = TextEditingController();
-  
+
   String? selectedAccountType;
   List<String> signatories = [''];
-  
+
   final List<String> accountTypes = [
     'Current Account',
     'Savings Account',
-    'Escrow Account',
-    'Trust Account',
+    'Fixed Deposit',
+    'Overdraft',
   ];
+
+  double _initialBalance = 0.00;
+  final double step = 0.01;
+
+  @override
+  void initState() {
+    super.initState();
+    _initialBalanceController.text = _initialBalance.toStringAsFixed(2);
+  }
 
   @override
   void dispose() {
@@ -58,7 +67,6 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
 
   void _createAccount() {
     if (_formKey.currentState!.validate()) {
-      // Handle account creation
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Escrow account created successfully!'),
@@ -69,193 +77,165 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
     }
   }
 
+  void _updateBalance(double newValue) {
+    final value = newValue < 0 ? 0.0 : newValue;
+    setState(() {
+      _initialBalance = double.parse(value.toStringAsFixed(2));
+      _initialBalanceController.text = _initialBalance.toStringAsFixed(2);
+    });
+  }
+
+  void _incrementBalance() {
+    _updateBalance(_initialBalance + step);
+  }
+
+  void _decrementBalance() {
+    if (_initialBalance - step >= 0) {
+      _updateBalance(_initialBalance - step);
+    } else {
+      _updateBalance(0.0);
+    }
+  }
+
+  void _onBalanceTextChanged(String text) {
+    final parsed = double.tryParse(text.replaceAll(',', ''));
+    if (parsed != null) {
+      _updateBalance(parsed);
+    } else if (text.isEmpty) {
+      setState(() {
+        _initialBalanceController.text = '';
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header Section
-                  _buildHeader(context, constraints),
-                  const SizedBox(height: 16),
-                  
-                  // Form Section
-                  _buildFormSection(context, constraints),
-                ],
-              ),
-            ),
-          );
-        },
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(context),
+              const SizedBox(height: 16),
+              _buildFormSection(context),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context, BoxConstraints constraints) {
+  Widget _buildHeader(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
-    final isSmallScreen = constraints.maxWidth < 600;
 
     return Container(
-      padding: EdgeInsets.all(isSmallScreen ? 16 : 24),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: colorScheme.outline,
+          color: colorScheme.outline.withValues(alpha: 0.5),
           width: 0.5,
         ),
       ),
-      child: isSmallScreen
-          ? Column(
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              Icons.add_circle_outline,
+              size: 24,
+              color: colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Create Escrow Account',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Add a new escrow account to your inventory',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          SecondaryButton(
+            label: 'Back to Accounts',
+            icon: Icons.arrow_back,
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFormSection(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Account Details Section
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainer,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: colorScheme.outline.withValues(alpha: 0.5),
+                width: 0.5,
+              ),
+            ),
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: colorScheme.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        Icons.add_circle_outline,
-                        size: 24,
-                        color: colorScheme.primary,
-                      ),
+                    Icon(
+                      Icons.account_balance,
+                      color: colorScheme.primary,
+                      size: 20,
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Create Escrow Account',
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: colorScheme.onSurface,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Add a new escrow account to your inventory',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onSurface.withValues(alpha: 0.7),
-                            ),
-                          ),
-                        ],
+                    const SizedBox(width: 8),
+                    Text(
+                      'Account Details',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurface,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                OutlineButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: Icons.arrow_back,
-                  label: 'Back to Accounts',
-                ),
-              ],
-            )
-          : Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.add_circle_outline,
-                    size: 28,
-                    color: colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Create Escrow Account',
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.onSurface,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Add a new escrow account to your inventory',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurface.withValues(alpha: 0.7),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                OutlineButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: Icons.arrow_back,
-                  label: 'Back to Accounts',
-                ),
-              ],
-            ),
-    );
-  }
-
-  Widget _buildFormSection(BuildContext context, BoxConstraints constraints) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
-    final isSmallScreen = constraints.maxWidth < 600;
-
-    return Container(
-      padding: EdgeInsets.all(isSmallScreen ? 16 : 24),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: colorScheme.outline,
-          width: 0.5,
-        ),
-      ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Section Title with Badges
-            Row(
-              children: [
-                Icon(
-                  Icons.account_balance,
-                  color: colorScheme.primary,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Account Details',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.primary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // Account Name and Account Number Row
-            isSmallScreen
-                ? Column(
-                    children: [
-                      _buildTextField(
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildTextField(
                         controller: _accountNameController,
                         label: 'Account Name',
                         hint: 'Enter account name',
@@ -267,8 +247,10 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
                           return null;
                         },
                       ),
-                      const SizedBox(height: 16),
-                      _buildTextField(
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildTextField(
                         controller: _accountNumberController,
                         label: 'Account Number',
                         hint: 'Enter account number',
@@ -281,49 +263,14 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
                           return null;
                         },
                       ),
-                    ],
-                  )
-                : Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          controller: _accountNameController,
-                          label: 'Account Name',
-                          hint: 'Enter account name',
-                          isRequired: true,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter account name';
-                            }
-                            return null;
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildTextField(
-                          controller: _accountNumberController,
-                          label: 'Account Number',
-                          hint: 'Enter account number',
-                          isRequired: true,
-                          keyboardType: TextInputType.number,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter account number';
-                            }
-                            return null;
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-            const SizedBox(height: 16),
-
-            // Bank Name and Branch Name Row
-            isSmallScreen
-                ? Column(
-                    children: [
-                      _buildTextField(
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildTextField(
                         controller: _bankNameController,
                         label: 'Bank Name',
                         hint: 'Enter bank name',
@@ -335,8 +282,10 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
                           return null;
                         },
                       ),
-                      const SizedBox(height: 16),
-                      _buildTextField(
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildTextField(
                         controller: _branchNameController,
                         label: 'Branch Name',
                         hint: 'Enter branch name',
@@ -348,48 +297,14 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
                           return null;
                         },
                       ),
-                    ],
-                  )
-                : Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          controller: _bankNameController,
-                          label: 'Bank Name',
-                          hint: 'Enter bank name',
-                          isRequired: true,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter bank name';
-                            }
-                            return null;
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildTextField(
-                          controller: _branchNameController,
-                          label: 'Branch Name',
-                          hint: 'Enter branch name',
-                          isRequired: true,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter branch name';
-                            }
-                            return null;
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-            const SizedBox(height: 16),
-
-            // IFSC Code and Account Type Row
-            isSmallScreen
-                ? Column(
-                    children: [
-                      _buildTextField(
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildTextField(
                         controller: _ifscCodeController,
                         label: 'IFSC Code',
                         hint: 'ENTER IFSC CODE',
@@ -407,16 +322,17 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
                           if (value.length != 11) {
                             return 'IFSC code must be 11 characters';
                           }
-                          // IFSC format: First 4 chars alphabets, 5th char is 0, last 6 chars alphanumeric
                           final ifscRegex = RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$');
                           if (!ifscRegex.hasMatch(value)) {
-                            return 'Invalid IFSC code format (e.g., SBIN0001234)';
+                            return 'Invalid IFSC code format';
                           }
                           return null;
                         },
                       ),
-                      const SizedBox(height: 16),
-                      _buildDropdown(
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildDropdown(
                         label: 'Account Type',
                         hint: 'Select account type',
                         value: selectedAccountType,
@@ -428,189 +344,231 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
                           });
                         },
                       ),
-                    ],
-                  )
-                : Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          controller: _ifscCodeController,
-                          label: 'IFSC Code',
-                          hint: 'ENTER IFSC CODE',
-                          isRequired: true,
-                          textCapitalization: TextCapitalization.characters,
-                          maxLength: 11,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(RegExp(r'[A-Z0-9]')),
-                            LengthLimitingTextInputFormatter(11),
-                          ],
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter IFSC code';
-                            }
-                            if (value.length != 11) {
-                              return 'IFSC code must be 11 characters';
-                            }
-                            // IFSC format: First 4 chars alphabets, 5th char is 0, last 6 chars alphanumeric
-                            final ifscRegex = RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$');
-                            if (!ifscRegex.hasMatch(value)) {
-                              return 'Invalid IFSC code format (e.g., SBIN0001234)';
-                            }
-                            return null;
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildDropdown(
-                          label: 'Account Type',
-                          hint: 'Select account type',
-                          value: selectedAccountType,
-                          items: accountTypes,
-                          isRequired: true,
-                          onChanged: (value) {
-                            setState(() {
-                              selectedAccountType = value;
-                            });
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-            const SizedBox(height: 16),
-
-            // Initial Balance
-            _buildTextField(
-              controller: _initialBalanceController,
-              label: 'Initial Balance',
-              hint: '0.00',
-              isRequired: true,
-              keyboardType: TextInputType.number,
-              prefixText: '₹  ',
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter initial balance';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-
-            // Description
-            _buildTextField(
-              controller: _descriptionController,
-              label: 'Description',
-              hint: 'Enter account description (optional)',
-              maxLines: 4,
-            ),
-            const SizedBox(height: 24),
-
-            // Authorized Signatories Section
-            Text(
-              'Authorized Signatories',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Signatories List
-            ...List.generate(signatories.length, (index) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Row(
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
                   children: [
                     Expanded(
-                      child: TextFormField(
-                        decoration: InputDecoration(
-                          hintText: 'Enter signatory name',
-                          hintStyle: TextStyle(
-                            color: colorScheme.onSurface.withValues(alpha: 0.5),
+                      child: _buildBalanceField(),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildTextField(
+                        controller: _descriptionController,
+                        label: 'Description',
+                        hint: 'Enter description (optional)',
+                        maxLines: 1,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Authorized Signatories Section
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainer,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: colorScheme.outline.withValues(alpha: 0.5),
+                width: 0.5,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.people,
+                      color: colorScheme.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Authorized Signatories',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                ...List.generate(signatories.length, (index) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            decoration: InputDecoration(
+                              hintText: 'Enter signatory name',
+                              hintStyle: TextStyle(
+                                color: colorScheme.onSurface.withValues(alpha: 0.5),
+                              ),
+                              filled: true,
+                              fillColor: colorScheme.surface,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                            ),
                           ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: colorScheme.outline),
+                        ),
+                        if (signatories.length > 1) ...[
+                          const SizedBox(width: 12),
+                          IconButton(
+                            onPressed: () => _removeSignatory(index),
+                            icon: const Icon(Icons.delete_outline),
+                            color: Colors.red,
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.red.withValues(alpha: 0.1),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
                           ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: colorScheme.outline),
+                        ],
+                      ],
+                    ),
+                  );
+                }),
+                SecondaryButton(
+                  onPressed: _addSignatory,
+                  icon: Icons.add,
+                  label: 'Add Signatory',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Action Buttons
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              SecondaryButton(
+                onPressed: () => Navigator.pop(context),
+                label: 'Cancel',
+              ),
+              const SizedBox(width: 12),
+              PrimaryButton(
+                onPressed: _createAccount,
+                icon: Icons.check,
+                label: 'Create Account',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBalanceField() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Initial Balance',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w500,
+            color: colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: colorScheme.outline.withValues(alpha: 0.5)),
+            borderRadius: BorderRadius.circular(8),
+            color: colorScheme.surface,
+          ),
+          child: Row(
+            children: [
+              const SizedBox(width: 12),
+              const Text("₹ ", style: TextStyle(fontSize: 16)),
+              Expanded(
+                child: TextFormField(
+                  controller: _initialBalanceController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                  ],
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    hintText: "0.00",
+                    contentPadding: EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter initial balance';
+                    }
+                    final parsed = double.tryParse(value);
+                    if (parsed == null) return 'Invalid amount';
+                    return null;
+                  },
+                  onChanged: _onBalanceTextChanged,
+                ),
+              ),
+              Container(
+                width: 36,
+                height: 48,
+                decoration: BoxDecoration(
+                  border: Border(left: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5))),
+                ),
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: _incrementBalance,
+                        child: Container(
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            border: Border(
+                              bottom: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
+                            ),
                           ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: colorScheme.primary, width: 2),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
-                          ),
+                          child: const Icon(Icons.keyboard_arrow_up, size: 18),
                         ),
                       ),
                     ),
-                    if (signatories.length > 1) ...[
-                      const SizedBox(width: 12),
-                      IconButton(
-                        onPressed: () => _removeSignatory(index),
-                        icon: const Icon(Icons.delete_outline),
-                        color: Colors.red,
-                        style: IconButton.styleFrom(
-                          backgroundColor: Colors.red.withValues(alpha: 0.1),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
+                    Expanded(
+                      child: InkWell(
+                        onTap: _decrementBalance,
+                        child: Container(
+                          alignment: Alignment.center,
+                          child: const Icon(Icons.keyboard_arrow_down, size: 18),
                         ),
                       ),
-                    ],
+                    ),
                   ],
                 ),
-              );
-            }),
-
-            // Add Signatory Button
-            OutlineButton(
-              onPressed: _addSignatory,
-              icon: Icons.add,
-              label: 'Add Signatory',
-            ),
-            const SizedBox(height: 32),
-
-            // Action Buttons
-            isSmallScreen
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      PrimaryButton(
-                        onPressed: _createAccount,
-                        icon: Icons.check_circle_outline,
-                        label: 'Create Account',
-                      ),
-                      const SizedBox(height: 12),
-                      OutlineButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: Icons.close,
-                        label: 'Cancel',
-                      ),
-                    ],
-                  )
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      OutlineButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: Icons.close,
-                        label: 'Cancel',
-                      ),
-                      const SizedBox(width: 12),
-                      PrimaryButton(
-                        onPressed: _createAccount,
-                        icon: Icons.check_circle_outline,
-                        label: 'Create Account',
-                      ),
-                    ],
-                  ),
-          ],
+              ),
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 
@@ -622,7 +580,6 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
     int maxLines = 1,
     int? maxLength,
     TextInputType? keyboardType,
-    String? prefixText,
     TextCapitalization textCapitalization = TextCapitalization.none,
     List<TextInputFormatter>? inputFormatters,
     String? Function(String?)? validator,
@@ -633,24 +590,12 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Text(
-              label,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: colorScheme.onSurface,
-              ),
-            ),
-            if (isRequired)
-              Text(
-                ' *',
-                style: TextStyle(
-                  color: Colors.red,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-          ],
+        Text(
+          label,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w500,
+            color: colorScheme.onSurface,
+          ),
         ),
         const SizedBox(height: 8),
         TextFormField(
@@ -663,30 +608,31 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
           validator: validator,
           decoration: InputDecoration(
             hintText: hint,
-            prefixText: prefixText,
             counterText: maxLength != null ? '' : null,
             hintStyle: TextStyle(
               color: colorScheme.onSurface.withValues(alpha: 0.5),
             ),
+            filled: true,
+            fillColor: colorScheme.surface,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: colorScheme.outline),
+              borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: colorScheme.outline),
+              borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: colorScheme.primary, width: 2),
+              borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
               borderSide: const BorderSide(color: Colors.red),
             ),
-            contentPadding: EdgeInsets.symmetric(
+            contentPadding: const EdgeInsets.symmetric(
               horizontal: 16,
-              vertical: maxLines > 1 ? 14 : 14,
+              vertical: 14,
             ),
           ),
         ),
@@ -708,24 +654,12 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Text(
-              label,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: colorScheme.onSurface,
-              ),
-            ),
-            if (isRequired)
-              Text(
-                ' *',
-                style: TextStyle(
-                  color: Colors.red,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-          ],
+        Text(
+          label,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w500,
+            color: colorScheme.onSurface,
+          ),
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
@@ -745,24 +679,26 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
           onChanged: onChanged,
           validator: isRequired
               ? (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please select $label';
-                  }
-                  return null;
-                }
+            if (value == null || value.isEmpty) {
+              return 'Please select $label';
+            }
+            return null;
+          }
               : null,
           decoration: InputDecoration(
+            filled: true,
+            fillColor: colorScheme.surface,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: colorScheme.outline),
+              borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: colorScheme.outline),
+              borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: colorScheme.primary, width: 2),
+              borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),

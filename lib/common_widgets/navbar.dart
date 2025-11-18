@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
 import 'package:ppv_components/core/theme/theme_notifier.dart';
 import 'package:ppv_components/common_widgets/breadcrumb_item.dart';
+import 'package:ppv_components/core/auth_service.dart';
+import 'package:ppv_components/core/app_routes.dart';
 
 class Navbar extends StatelessWidget {
   final String? currentLocation;
@@ -104,6 +107,18 @@ class Navbar extends StatelessWidget {
                   fontSize: 16,
                   color: colorScheme.onSurface,
                 ),
+              ),
+              const SizedBox(width: 16),
+              IconButton(
+                icon: Icon(Icons.logout, color: colorScheme.onSurfaceVariant),
+                onPressed: () async {
+                  final auth = AuthService();
+                  await auth.logout();
+                  if (context.mounted) {
+                    context.go(AppRoutes.login);
+                  }
+                },
+                tooltip: "Logout",
               ),
             ],
           ),

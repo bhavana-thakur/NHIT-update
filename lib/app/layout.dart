@@ -27,7 +27,7 @@ class _LayoutPageState extends State<LayoutPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Navbar(userName: 'Abhishek Sah'),
+                Navbar(userName: 'Bhavana Thakur'),
                 Expanded(child: widget.child),
               ],
             ),

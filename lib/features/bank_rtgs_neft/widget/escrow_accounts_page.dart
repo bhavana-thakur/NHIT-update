@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/models/bank_models/escrow_account_model.dart';
 import 'package:ppv_components/common_widgets/custom_table.dart';
+import 'package:ppv_components/common_widgets/pagination.dart';
+import 'package:ppv_components/common_widgets/badge.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/create_escrow_account_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/account_transfers_page.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/widget/escrow_accounts_edit_page.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/widget/view_escrow_account_detail.dart';
 
 class EscrowAccountsPage extends StatefulWidget {
   final List<EscrowAccount> escrowAccounts;
@@ -17,33 +21,128 @@ class EscrowAccountsPage extends StatefulWidget {
 }
 
 class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
-  int rowsPerPage = 25;
+  int rowsPerPage = 10;
   int currentPage = 0;
   late List<EscrowAccount> paginatedAccounts;
+  String? statusFilter;
+  List<EscrowAccount> filteredAccounts = [];
+  late List<EscrowAccount> allAccounts;
+  int? _hoveredCardIndex;
+
+  // Edit and View mode state
+  bool _isEditMode = false;
+  bool _isViewMode = false;
+  EscrowAccount? _accountToEdit;
 
   @override
   void initState() {
     super.initState();
+    allAccounts = List<EscrowAccount>.from(widget.escrowAccounts);
+    filteredAccounts = allAccounts;
     _updatePagination();
   }
 
   @override
   void didUpdateWidget(covariant EscrowAccountsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    allAccounts = List<EscrowAccount>.from(widget.escrowAccounts);
+    filteredAccounts = allAccounts;
+    _applyFilter();
     _updatePagination();
   }
 
   void _updatePagination() {
     final start = currentPage * rowsPerPage;
-    final end = (start + rowsPerPage).clamp(0, widget.escrowAccounts.length);
+    final end = (start + rowsPerPage).clamp(0, filteredAccounts.length);
+    paginatedAccounts = filteredAccounts.sublist(start, end);
+    final totalPages = (filteredAccounts.length / rowsPerPage).ceil();
+    if (currentPage >= totalPages && totalPages > 0) {
+      currentPage = totalPages - 1;
+      final newStart = currentPage * rowsPerPage;
+      final newEnd = (newStart + rowsPerPage).clamp(0, filteredAccounts.length);
+      paginatedAccounts = filteredAccounts.sublist(newStart, newEnd);
+    }
+  }
+
+  void _applyFilter() {
+    if (statusFilter == null || statusFilter == 'All') {
+      filteredAccounts = allAccounts;
+    } else {
+      filteredAccounts = allAccounts
+          .where((account) => account.status == statusFilter)
+          .toList();
+    }
+    currentPage = 0;
+  }
+
+  void _refreshData() {
     setState(() {
-      paginatedAccounts = widget.escrowAccounts.sublist(start, end);
-      final totalPages = (widget.escrowAccounts.length / rowsPerPage).ceil();
-      if (currentPage >= totalPages && totalPages > 0) {
-        currentPage = totalPages - 1;
-        paginatedAccounts = widget.escrowAccounts.sublist(start, end);
-      }
+      statusFilter = null;
+      filteredAccounts = allAccounts;
+      currentPage = 0;
+      _updatePagination();
     });
+  }
+
+  void _showFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Filter Accounts'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('All'),
+                leading: Radio<String?>(
+                  value: null,
+                  groupValue: statusFilter,
+                  onChanged: (value) {
+                    setState(() {
+                      statusFilter = value;
+                    });
+                    Navigator.pop(context);
+                    _applyFilter();
+                    _updatePagination();
+                  },
+                ),
+              ),
+              ListTile(
+                title: const Text('Active'),
+                leading: Radio<String>(
+                  value: 'Active',
+                  groupValue: statusFilter,
+                  onChanged: (value) {
+                    setState(() {
+                      statusFilter = value;
+                    });
+                    Navigator.pop(context);
+                    _applyFilter();
+                    _updatePagination();
+                  },
+                ),
+              ),
+              ListTile(
+                title: const Text('Inactive'),
+                leading: Radio<String>(
+                  value: 'Inactive',
+                  groupValue: statusFilter,
+                  onChanged: (value) {
+                    setState(() {
+                      statusFilter = value;
+                    });
+                    Navigator.pop(context);
+                    _applyFilter();
+                    _updatePagination();
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void changeRowsPerPage(int? value) {
@@ -61,27 +160,109 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
     });
   }
 
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'active':
+        return Colors.green;
+      case 'inactive':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  void onViewAccount(EscrowAccount account) {
+    setState(() {
+      _isViewMode = true;
+      _isEditMode = false;
+      _accountToEdit = account;
+    });
+  }
+
+  void onEditAccount(EscrowAccount account) {
+    setState(() {
+      _isEditMode = true;
+      _isViewMode = false;
+      _accountToEdit = account;
+    });
+  }
+
+  void _saveEditedAccount(EscrowAccount updatedAccount) {
+    final index = allAccounts.indexWhere((a) => a.accountNumber == _accountToEdit!.accountNumber);
+    if (index != -1) {
+      setState(() {
+        allAccounts[index] = updatedAccount;
+        _isEditMode = false;
+        _isViewMode = false;
+        _accountToEdit = null;
+        _applyFilter();
+        _updatePagination();
+      });
+    }
+  }
+
+  void _cancelEdit() {
+    setState(() {
+      _isEditMode = false;
+      _isViewMode = false;
+      _accountToEdit = null;
+    });
+  }
+
+  Future<void> deleteAccount(EscrowAccount account) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirm Delete'),
+        content: Text('Are you sure you want to delete ${account.accountName}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (shouldDelete == true) {
+      setState(() {
+        allAccounts.removeWhere((a) => a.accountNumber == account.accountNumber);
+        _applyFilter();
+        _updatePagination();
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      body: SingleChildScrollView(
+      body: _accountToEdit != null
+          ? (_isEditMode
+          ? EditEscrowAccountContent(
+        account: _accountToEdit!,
+        onSave: _saveEditedAccount,
+        onCancel: _cancelEdit,
+      )
+          : ViewEscrowAccountDetail(
+        account: _accountToEdit!,
+        onClose: _cancelEdit,
+      ))
+          : SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header Section
               _buildHeader(context),
               const SizedBox(height: 16),
-              
-              // Stats Cards
               _buildStatsCards(context),
               const SizedBox(height: 16),
-              
-              // Table Section
               _buildTableSection(context),
             ],
           ),
@@ -203,12 +384,13 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
         Expanded(
           child: _buildStatCard(
             context,
+            index: 0,
             icon: Icons.account_balance,
             iconColor: colorScheme.primary.withValues(alpha: 0.1),
             iconForeground: colorScheme.primary,
             label: 'Total Accounts',
-            value: '0',
-            badge: '0 Active',
+            value: '${allAccounts.length}',
+            badge: '${allAccounts.where((a) => a.status == "Active").length} Active',
             badgeColor: colorScheme.primary.withValues(alpha: 0.1),
             badgeTextColor: colorScheme.primary,
           ),
@@ -217,6 +399,7 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
         Expanded(
           child: _buildStatCard(
             context,
+            index: 1,
             icon: Icons.currency_rupee,
             iconColor: Colors.green.withValues(alpha: 0.1),
             iconForeground: Colors.green,
@@ -231,6 +414,7 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
         Expanded(
           child: _buildStatCard(
             context,
+            index: 2,
             icon: Icons.wallet,
             iconColor: Colors.blue.withValues(alpha: 0.1),
             iconForeground: Colors.blue,
@@ -245,11 +429,12 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
         Expanded(
           child: _buildStatCard(
             context,
+            index: 3,
             icon: Icons.trending_up,
             iconColor: Colors.orange.withValues(alpha: 0.1),
             iconForeground: Colors.orange,
             label: 'Active Accounts',
-            value: '0',
+            value: '${allAccounts.where((a) => a.status == "Active").length}',
             badge: '',
             badgeColor: Colors.transparent,
             badgeTextColor: Colors.transparent,
@@ -276,132 +461,87 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.grid_view,
-                              color: colorScheme.primary,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'All Escrow Accounts',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: colorScheme.onSurface,
-                              ),
-                            ),
-                          ],
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: () {},
-                          icon: Icon(Icons.refresh, size: 16, color: colorScheme.onSurface),
-                          label: Text(
-                            'Refresh',
-                            style: TextStyle(
-                              color: colorScheme.onSurface,
-                              fontSize: 13,
-                            ),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(color: colorScheme.outline),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ],
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.grid_view,
+                    color: colorScheme.primary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'All Escrow Accounts',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurface,
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Manage and monitor all escrow accounts',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _showFilterDialog,
+                    icon: Icon(Icons.filter_list, size: 16, color: colorScheme.onSurface),
+                    label: Text(
+                      statusFilter == null ? 'Filter' : 'Filter: $statusFilter',
+                      style: TextStyle(
+                        color: colorScheme.onSurface,
+                        fontSize: 13,
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Text(
-                          'Show',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: colorScheme.outline),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: DropdownButton<int>(
-                            value: rowsPerPage,
-                            items: [10, 25, 50, 100]
-                                .map((e) => DropdownMenuItem(
-                                      value: e,
-                                      child: Text('$e'),
-                                    ))
-                                .toList(),
-                            onChanged: changeRowsPerPage,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: colorScheme.onSurface,
-                            ),
-                            underline: const SizedBox(),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'entries',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          'Search:',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: 200,
-                          child: TextField(
-                            decoration: InputDecoration(
-                              contentPadding: const EdgeInsets.symmetric(
-                                vertical: 8,
-                                horizontal: 12,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: colorScheme.outline),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: colorScheme.outline),
-                              ),
-                              isDense: true,
-                            ),
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: colorScheme.onSurface,
-                            ),
-                          ),
-                        ),
-                      ],
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: colorScheme.outline),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
-                    const SizedBox(height: 16),
-                    widget.escrowAccounts.isEmpty
-                        ? _buildEmptyState(context)
-                        : _buildTable(context),
-                    if (widget.escrowAccounts.isNotEmpty) _buildPagination(context),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _refreshData,
+                    icon: Icon(Icons.refresh, size: 16, color: colorScheme.onSurface),
+                    label: Text(
+                      'Refresh',
+                      style: TextStyle(
+                        color: colorScheme.onSurface,
+                        fontSize: 13,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: colorScheme.outline),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Manage and monitor all escrow accounts',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+          const SizedBox(height: 16),
+          filteredAccounts.isEmpty
+              ? _buildEmptyState(context)
+              : _buildTable(context),
+          if (filteredAccounts.isNotEmpty) _buildPagination(context),
         ],
       ),
     );
@@ -444,266 +584,211 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
   }
 
   Widget _buildStatCard(
-    BuildContext context, {
-    required IconData icon,
-    required Color iconColor,
-    required Color iconForeground,
-    required String label,
-    required String value,
-    required String badge,
-    required Color badgeColor,
-    required Color badgeTextColor,
-  }) {
+      BuildContext context, {
+        required int index,
+        required IconData icon,
+        required Color iconColor,
+        required Color iconForeground,
+        required String label,
+        required String value,
+        required String badge,
+        required Color badgeColor,
+        required Color badgeTextColor,
+      }) {
     final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
+    final isHovered = _hoveredCardIndex == index;
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colorScheme.outline,
-          width: 0.5,
+    return MouseRegion(
+      onEnter: (_) {
+        setState(() {
+          _hoveredCardIndex = index;
+        });
+      },
+      onExit: (_) {
+        setState(() {
+          _hoveredCardIndex = null;
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        transform: Matrix4.identity()..scale(isHovered ? 1.02 : 1.0),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isHovered ? colorScheme.primary : colorScheme.outline,
+            width: isHovered ? 1.5 : 0.5,
+          ),
+          boxShadow: isHovered
+              ? [
+            BoxShadow(
+              color: colorScheme.primary.withValues(alpha: 0.15),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ]
+              : [],
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: iconColor,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: iconForeground, size: 24),
-              ),
-              const Spacer(),
-              if (badge.isNotEmpty)
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: badgeColor,
-                    borderRadius: BorderRadius.circular(12),
+                    color: iconColor,
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Text(
-                    badge,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: badgeTextColor,
-                      fontWeight: FontWeight.w600,
+                  child: Icon(icon, color: iconForeground, size: 24),
+                ),
+                const Spacer(),
+                if (badge.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: badgeColor,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      badge,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: badgeTextColor,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            value,
-            style: theme.textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: colorScheme.onSurface,
+              ],
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurface.withValues(alpha: 0.7),
+            const SizedBox(height: 16),
+            Text(
+              value,
+              style: theme.textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: colorScheme.onSurface,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildTable(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
 
     final columns = [
-            DataColumn(
-              label: Text(
-                '#',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
-                  fontSize: 13,
-                ),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                'ACCOUNT NAME',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
-                  fontSize: 13,
-                ),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                'ACCOUNT NUMBER',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
-                  fontSize: 13,
-                ),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                'BANK',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
-                  fontSize: 13,
-                ),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                'TYPE',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
-                  fontSize: 13,
-                ),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                'STATUS',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
-                  fontSize: 13,
-                ),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                'BALANCE',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
-                  fontSize: 13,
-                ),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                'ACTIONS',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
-                  fontSize: 13,
-                ),
-              ),
-            ),
-          ];
-    
+      DataColumn(
+        label: Text('#', style: TextStyle(color: colorScheme.onSurface)),
+      ),
+      DataColumn(
+        label: Text('Account Name', style: TextStyle(color: colorScheme.onSurface)),
+      ),
+      DataColumn(
+        label: Text('Account Number', style: TextStyle(color: colorScheme.onSurface)),
+      ),
+      DataColumn(
+        label: Text('Bank', style: TextStyle(color: colorScheme.onSurface)),
+      ),
+      DataColumn(
+        label: Text('Type', style: TextStyle(color: colorScheme.onSurface)),
+      ),
+      DataColumn(
+        label: Text('Status', style: TextStyle(color: colorScheme.onSurface)),
+      ),
+      DataColumn(
+        label: Text('Balance', style: TextStyle(color: colorScheme.onSurface)),
+      ),
+      DataColumn(
+        label: Text('Actions', style: TextStyle(color: colorScheme.onSurface)),
+      ),
+    ];
+
     final rows = paginatedAccounts.asMap().entries.map((entry) {
-            final index = entry.key;
-            final account = entry.value;
-            return DataRow(
-              cells: [
-                DataCell(
-                  Text(
-                    '${currentPage * rowsPerPage + index + 1}',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
+      final index = entry.key;
+      final account = entry.value;
+      return DataRow(
+        cells: [
+          DataCell(
+            Text(
+              '${currentPage * rowsPerPage + index + 1}',
+              style: TextStyle(color: colorScheme.onSurface),
+            ),
+          ),
+          DataCell(
+            Text(
+              account.accountName,
+              style: TextStyle(color: colorScheme.onSurface),
+            ),
+          ),
+          DataCell(
+            Text(
+              account.accountNumber,
+              style: TextStyle(color: colorScheme.onSurface),
+            ),
+          ),
+          DataCell(
+            Text(
+              account.bank,
+              style: TextStyle(color: colorScheme.onSurface),
+            ),
+          ),
+          DataCell(
+            Text(
+              account.type,
+              style: TextStyle(color: colorScheme.onSurface),
+            ),
+          ),
+          DataCell(
+            BadgeChip(
+              label: account.status,
+              type: ChipType.status,
+              statusKey: account.status,
+              statusColorFunc: _getStatusColor,
+            ),
+          ),
+          DataCell(
+            Text(
+              account.balance,
+              style: TextStyle(color: colorScheme.onSurface),
+            ),
+          ),
+          DataCell(
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.visibility, size: 18),
+                  onPressed: () => onViewAccount(account),
+                  tooltip: 'View',
                 ),
-                DataCell(
-                  Text(
-                    account.accountName,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
+                IconButton(
+                  icon: const Icon(Icons.edit, size: 18),
+                  onPressed: () => onEditAccount(account),
+                  tooltip: 'Edit',
                 ),
-                DataCell(
-                  Text(
-                    account.accountNumber,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                ),
-                DataCell(
-                  Text(
-                    account.bank,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                ),
-                DataCell(
-                  Text(
-                    account.type,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                ),
-                DataCell(
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: account.status.toLowerCase() == 'active'
-                          ? Colors.green.withValues(alpha: 0.1)
-                          : Colors.red.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      account.status,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: account.status.toLowerCase() == 'active'
-                            ? Colors.green
-                            : Colors.red,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-                DataCell(
-                  Text(
-                    account.balance,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurface,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                DataCell(
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: Icon(Icons.edit, size: 18, color: colorScheme.primary),
-                        onPressed: () {},
-                        tooltip: 'Edit',
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.visibility, size: 18, color: colorScheme.primary),
-                        onPressed: () {},
-                        tooltip: 'View',
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete, size: 18, color: Colors.red),
-                        onPressed: () {},
-                        tooltip: 'Delete',
-                      ),
-                    ],
-                  ),
+                IconButton(
+                  icon: const Icon(Icons.delete, size: 18),
+                  onPressed: () => deleteAccount(account),
+                  tooltip: 'Delete',
+                  color: Theme.of(context).colorScheme.error,
                 ),
               ],
-            );
-          }).toList();
+            ),
+          ),
+        ],
+      );
+    }).toList();
 
     return CustomTable(
       columns: columns,
@@ -712,69 +797,15 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
   }
 
   Widget _buildPagination(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
-    final totalPages = (widget.escrowAccounts.length / rowsPerPage).ceil();
-    final start = currentPage * rowsPerPage;
-    final end = (start + rowsPerPage).clamp(0, widget.escrowAccounts.length);
-
     return Padding(
       padding: const EdgeInsets.only(top: 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            'Showing ${start + 1} to $end of ${widget.escrowAccounts.length} entries',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurface.withValues(alpha: 0.6),
-            ),
-          ),
-          Row(
-            children: [
-              OutlinedButton(
-                onPressed: currentPage > 0 ? () => gotoPage(currentPage - 1) : null,
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: colorScheme.outline),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
-                child: Text(
-                  'Previous',
-                  style: TextStyle(
-                    color: currentPage > 0
-                        ? colorScheme.onSurface
-                        : colorScheme.onSurface.withValues(alpha: 0.3),
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              OutlinedButton(
-                onPressed: currentPage < totalPages - 1
-                    ? () => gotoPage(currentPage + 1)
-                    : null,
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: colorScheme.outline),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
-                child: Text(
-                  'Next',
-                  style: TextStyle(
-                    color: currentPage < totalPages - 1
-                        ? colorScheme.onSurface
-                        : colorScheme.onSurface.withValues(alpha: 0.3),
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+      child: CustomPaginationBar(
+        totalItems: filteredAccounts.length,
+        currentPage: currentPage,
+        rowsPerPage: rowsPerPage,
+        onPageChanged: gotoPage,
+        onRowsPerPageChanged: changeRowsPerPage,
+        availableRowsPerPage: const [5, 10, 20, 50],
       ),
     );
   }

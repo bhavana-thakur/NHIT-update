@@ -104,7 +104,9 @@ final List<FormFieldConfig> addUserFields = [
     label: 'Roles',
     type: FormFieldType.text,
     name: 'roles',
-    validator: (value) {},
+    validator: (value) {
+      return null;
+    },
   ),
   FormFieldConfig(
     label: 'Add Your Signature',
@@ -120,25 +122,33 @@ final List<FormFieldConfig> addUserFields = [
     label: 'Name of Account holder',
     type: FormFieldType.text,
     name: 'accountHolder',
-    validator: (value) {},
+    validator: (value) {
+      return null;
+    },
   ),
   FormFieldConfig(
     label: 'Bank Name',
     type: FormFieldType.text,
     name: 'bankName',
-    validator: (value) {},
+    validator: (value) {
+      return null;
+    },
   ),
   FormFieldConfig(
     label: 'Bank Account',
     type: FormFieldType.text,
     name: 'bankAccount',
-    validator: (value) {},
+    validator: (value) {
+      return null;
+    },
   ),
   FormFieldConfig(
     label: 'IFSC',
     type: FormFieldType.text,
     name: 'ifsc',
-    validator: (value) {},
+    validator: (value) {
+      return null;
+    },
   ),
 ];
 

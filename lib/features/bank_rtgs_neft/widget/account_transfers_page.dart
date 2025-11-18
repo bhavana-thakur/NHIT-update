@@ -1,10 +1,19 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:ppv_components/common_widgets/button/primary_button.dart';
 import 'package:ppv_components/common_widgets/button/outlined_button.dart';
 import 'package:ppv_components/common_widgets/custom_table.dart';
+import 'package:ppv_components/common_widgets/pagination.dart';
+import 'package:ppv_components/common_widgets/badge.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/widget/%20edit_transfer_content.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/bank_letters_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/escrow_accounts_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/create_transfer_page.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/widget/create_bank_letter_page.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/widget/create_escrow_account_page.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/models/bank_models/account_transfer_model.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/data/bank_dummydata/account_transfer_dummy.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/widget/view_transfer_detail.dart';
 
 class AccountTransfersPage extends StatefulWidget {
   const AccountTransfersPage({super.key});
@@ -14,29 +23,327 @@ class AccountTransfersPage extends StatefulWidget {
 }
 
 class _AccountTransfersPageState extends State<AccountTransfersPage> {
-  int rowsPerPage = 25;
+  int rowsPerPage = 10;
   int currentPage = 0;
   String searchQuery = '';
-  
-  // Mock data - replace with actual data
-  final List<Map<String, dynamic>> transfers = [];
+  String? statusFilter;
+
+  // Hover states for stat cards and quick action buttons
+  int? _hoveredCardIndex;
+  int? _hoveredButtonIndex;
+
+  // Edit and View mode state
+  bool _isEditMode = false;
+  bool _isViewMode = false;
+  AccountTransfer? _transferToEdit;
+
+  late List<AccountTransfer> filteredTransfers;
+  late List<AccountTransfer> paginatedTransfers;
+  late List<AccountTransfer> allTransfers;
+
+  // Data for CreateTransferPage
+  final List<String> sourceAccounts = [
+    'Main Account - ACC001',
+    'Savings Account - ACC002',
+    'Business Account - ACC003',
+    'Project Account - ACC004',
+  ];
+
+  final List<String> destinationAccounts = [
+    'Main Account - ACC001',
+    'Savings Account - ACC002',
+    'Business Account - ACC003',
+    'Project Account - ACC004',
+  ];
+
+  final List<Map<String, dynamic>> transferTypes = [
+    {
+      'type': 'Internal Transfer',
+      'icon': Icons.swap_horiz,
+      'color': Colors.cyan,
+      'description': 'Transfer between your own accounts',
+    },
+    {
+      'type': 'External Transfer',
+      'icon': Icons.send,
+      'color': Colors.purple,
+      'description': 'Transfer to external beneficiaries',
+    },
+  ];
+
+  final List<Map<String, dynamic>> transferModes = [
+    {
+      'mode': 'One to One',
+      'icon': Icons.arrow_forward,
+      'color': Colors.blue,
+      'description': 'Single account to single account',
+    },
+    {
+      'mode': 'One to Many',
+      'icon': Icons.account_tree,
+      'color': Colors.orange,
+      'description': 'Single account to multiple accounts',
+    },
+    {
+      'mode': 'Many to Many',
+      'icon': Icons.hub,
+      'color': Colors.purple,
+      'description': 'Multiple accounts to multiple accounts',
+    },
+  ];
+
+  final List<Map<String, dynamic>> paymentMethods = [
+    {
+      'method': 'RTGS',
+      'icon': Icons.account_balance,
+      'color': Colors.blue,
+      'description': 'Real Time Gross Settlement',
+      'minAmount': '₹2,00,000',
+    },
+    {
+      'method': 'NEFT',
+      'icon': Icons.swap_horiz,
+      'color': Colors.green,
+      'description': 'National Electronic Funds Transfer',
+      'minAmount': 'No minimum',
+    },
+    {
+      'method': 'IMPS',
+      'icon': Icons.flash_on,
+      'color': Colors.orange,
+      'description': 'Immediate Payment Service',
+      'minAmount': 'No minimum',
+    },
+    {
+      'method': 'UPI',
+      'icon': Icons.qr_code_2,
+      'color': Colors.purple,
+      'description': 'Unified Payments Interface',
+      'minAmount': 'No minimum',
+    },
+  ];
 
   @override
   void initState() {
     super.initState();
+    allTransfers = List<AccountTransfer>.from(accountTransferDummyData);
+    filteredTransfers = allTransfers;
+    _updatePagination();
+  }
+
+  void _updatePagination() {
+    final start = currentPage * rowsPerPage;
+    final end = (start + rowsPerPage).clamp(0, filteredTransfers.length);
+    paginatedTransfers = filteredTransfers.sublist(start, end);
   }
 
   void changeRowsPerPage(int? value) {
-    setState(() {
-      rowsPerPage = value ?? 25;
-      currentPage = 0;
-    });
+    if (value != null) {
+      setState(() {
+        rowsPerPage = value;
+        currentPage = 0;
+        _updatePagination();
+      });
+    }
   }
 
   void gotoPage(int page) {
     setState(() {
       currentPage = page;
+      _updatePagination();
     });
+  }
+
+  void updateSearch(String query) {
+    setState(() {
+      searchQuery = query.toLowerCase();
+      _applyFilters();
+      currentPage = 0;
+      _updatePagination();
+    });
+  }
+
+  void _applyFilters() {
+    filteredTransfers = allTransfers.where((transfer) {
+      final matchesSearch = searchQuery.isEmpty ||
+          transfer.reference.toLowerCase().contains(searchQuery) ||
+          transfer.fromAccount.toLowerCase().contains(searchQuery) ||
+          transfer.toAccount.toLowerCase().contains(searchQuery) ||
+          transfer.status.toLowerCase().contains(searchQuery);
+
+      final matchesStatus = statusFilter == null ||
+          statusFilter == 'All' ||
+          transfer.status == statusFilter;
+
+      return matchesSearch && matchesStatus;
+    }).toList();
+  }
+
+  void _refreshData() {
+    setState(() {
+      statusFilter = null;
+      searchQuery = '';
+      filteredTransfers = allTransfers;
+      currentPage = 0;
+      _updatePagination();
+    });
+  }
+
+  void _showFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Filter Transfers'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('All'),
+                leading: Radio<String?>(
+                  value: null,
+                  groupValue: statusFilter,
+                  onChanged: (value) {
+                    setState(() {
+                      statusFilter = value;
+                    });
+                    Navigator.pop(context);
+                    _applyFilters();
+                    _updatePagination();
+                  },
+                ),
+              ),
+              ListTile(
+                title: const Text('Completed'),
+                leading: Radio<String>(
+                  value: 'Completed',
+                  groupValue: statusFilter,
+                  onChanged: (value) {
+                    setState(() {
+                      statusFilter = value;
+                    });
+                    Navigator.pop(context);
+                    _applyFilters();
+                    _updatePagination();
+                  },
+                ),
+              ),
+              ListTile(
+                title: const Text('Pending Approval'),
+                leading: Radio<String>(
+                  value: 'Pending Approval',
+                  groupValue: statusFilter,
+                  onChanged: (value) {
+                    setState(() {
+                      statusFilter = value;
+                    });
+                    Navigator.pop(context);
+                    _applyFilters();
+                    _updatePagination();
+                  },
+                ),
+              ),
+              ListTile(
+                title: const Text('In Progress'),
+                leading: Radio<String>(
+                  value: 'In Progress',
+                  groupValue: statusFilter,
+                  onChanged: (value) {
+                    setState(() {
+                      statusFilter = value;
+                    });
+                    Navigator.pop(context);
+                    _applyFilters();
+                    _updatePagination();
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'completed':
+        return Colors.green;
+      case 'pending approval':
+        return Colors.orange;
+      case 'in progress':
+        return Colors.blue;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  void onViewTransfer(AccountTransfer transfer) {
+    setState(() {
+      _isViewMode = true;
+      _isEditMode = false;
+      _transferToEdit = transfer;
+    });
+  }
+
+  void onEditTransfer(AccountTransfer transfer) {
+    setState(() {
+      _isEditMode = true;
+      _isViewMode = false;
+      _transferToEdit = transfer;
+    });
+  }
+
+  void _saveEditedTransfer(AccountTransfer updatedTransfer) {
+    final index = allTransfers.indexWhere((t) => t.id == _transferToEdit!.id);
+    if (index != -1) {
+      setState(() {
+        allTransfers[index] = updatedTransfer;
+        _isEditMode = false;
+        _isViewMode = false;
+        _transferToEdit = null;
+        _applyFilters();
+        _updatePagination();
+      });
+    }
+  }
+
+  void _cancelEdit() {
+    setState(() {
+      _isEditMode = false;
+      _isViewMode = false;
+      _transferToEdit = null;
+    });
+  }
+
+  Future<void> deleteTransfer(AccountTransfer transfer) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirm Delete'),
+        content: Text('Are you sure you want to delete transfer ${transfer.reference}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (shouldDelete == true) {
+      setState(() {
+        allTransfers.removeWhere((t) => t.id == transfer.id);
+        _applyFilters();
+        _updatePagination();
+      });
+    }
   }
 
   @override
@@ -45,7 +352,18 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      body: LayoutBuilder(
+      body: _transferToEdit != null
+          ? (_isEditMode
+          ? EditTransferContent(
+        transfer: _transferToEdit!,
+        onSave: _saveEditedTransfer,
+        onCancel: _cancelEdit,
+      )
+          : ViewTransferDetail(
+        transfer: _transferToEdit!,
+        onClose: _cancelEdit,
+      ))
+          : LayoutBuilder(
         builder: (context, constraints) {
           return SingleChildScrollView(
             child: Padding(
@@ -53,19 +371,12 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header Section
                   _buildHeader(context, constraints),
                   const SizedBox(height: 16),
-                  
-                  // Stats Cards
                   _buildStatsCards(context, constraints),
                   const SizedBox(height: 16),
-                  
-                  // Quick Actions
                   _buildQuickActions(context, constraints),
                   const SizedBox(height: 16),
-                  
-                  // Table Section
                   _buildTableSection(context, constraints),
                 ],
               ),
@@ -198,9 +509,7 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
 
   Widget _buildStatsCards(BuildContext context, BoxConstraints constraints) {
     final colorScheme = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
-    
-    // Determine columns based on screen width
+
     int crossAxisCount = 4;
     if (constraints.maxWidth < 600) {
       crossAxisCount = 1;
@@ -212,19 +521,19 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
       {
         'icon': Icons.sync_alt,
         'label': 'Total Transfers',
-        'value': '0',
+        'value': '${allTransfers.length}',
         'color': Colors.blue,
       },
       {
         'icon': Icons.pending_actions,
         'label': 'Pending Approval',
-        'value': '0',
+        'value': '${allTransfers.where((t) => t.status == "Pending Approval").length}',
         'color': Colors.orange,
       },
       {
         'icon': Icons.check_circle,
         'label': 'Completed',
-        'value': '0',
+        'value': '${allTransfers.where((t) => t.status == "Completed").length}',
         'color': Colors.green,
       },
       {
@@ -242,13 +551,14 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
         crossAxisCount: crossAxisCount,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
-        childAspectRatio: crossAxisCount == 1 ? 4.5 : (crossAxisCount == 2 ? 2.8 : 2.5),
+        childAspectRatio: crossAxisCount == 1 ? 4.0 : (crossAxisCount == 2 ? 2.5 : 2.2),
       ),
       itemCount: stats.length,
       itemBuilder: (context, index) {
         final stat = stats[index];
         return _buildStatCard(
           context,
+          index: index,
           icon: stat['icon'] as IconData,
           label: stat['label'] as String,
           value: stat['value'] as String,
@@ -259,63 +569,78 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
   }
 
   Widget _buildStatCard(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required String value,
-    required Color color,
-  }) {
+      BuildContext context, {
+        required int index,
+        required IconData icon,
+        required String label,
+        required String value,
+        required Color color,
+      }) {
     final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
+    final isHovered = _hoveredCardIndex == index;
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colorScheme.outline,
-          width: 0.5,
-        ),
-      ),
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.centerLeft,
-        child: IntrinsicHeight(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, color: color, size: 18),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                value,
-                style: theme.textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.onSurface,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.visible,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.visible,
-              ),
-            ],
+    return MouseRegion(
+      onEnter: (_) {
+        setState(() {
+          _hoveredCardIndex = index;
+        });
+      },
+      onExit: (_) {
+        setState(() {
+          _hoveredCardIndex = null;
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        transform: Matrix4.identity()..scale(isHovered ? 1.02 : 1.0),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isHovered ? colorScheme.primary : colorScheme.outline,
+            width: isHovered ? 2.0 : 0.5,
           ),
+          boxShadow: isHovered
+              ? [
+            BoxShadow(
+              color: colorScheme.primary.withValues(alpha: 0.15),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ]
+              : [],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              value,
+              style: theme.textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -325,6 +650,61 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
     final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
     final isSmallScreen = constraints.maxWidth < 900;
+
+    final quickActions = [
+      {
+        'icon': Icons.swap_horiz,
+        'label': 'Internal Transfer',
+        'color': Colors.blue,
+        'onTap': () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => CreateTransferPage(),
+            ),
+          );
+        },
+      },
+      {
+        'icon': Icons.send,
+        'label': 'External Transfer',
+        'color': Colors.purple,
+        'onTap': () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => CreateTransferPage(),
+            ),
+          );
+        },
+      },
+      {
+        'icon': Icons.description,
+        'label': 'Bank Letter',
+        'color': Colors.green,
+        'onTap': () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const CreateBankLetterPage(),
+            ),
+          );
+        },
+      },
+      {
+        'icon': Icons.add_circle_outline,
+        'label': 'Add Account',
+        'color': Colors.grey,
+        'onTap': () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const CreateEscrowAccountPage(),
+            ),
+          );
+        },
+      },
+    ];
 
     return Container(
       padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
@@ -359,120 +739,103 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
           const SizedBox(height: 16),
           isSmallScreen
               ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildQuickActionButton(
-                      context,
-                      icon: Icons.swap_horiz,
-                      label: 'Internal Transfer',
-                      color: Colors.blue,
-                    ),
-                    const SizedBox(height: 12),
-                    _buildQuickActionButton(
-                      context,
-                      icon: Icons.send,
-                      label: 'External Transfer',
-                      color: Colors.purple,
-                    ),
-                    const SizedBox(height: 12),
-                    _buildQuickActionButton(
-                      context,
-                      icon: Icons.description,
-                      label: 'Bank Letter',
-                      color: Colors.green,
-                    ),
-                    const SizedBox(height: 12),
-                    _buildQuickActionButton(
-                      context,
-                      icon: Icons.add_circle_outline,
-                      label: 'Add Account',
-                      color: Colors.grey,
-                    ),
-                  ],
-                )
-              : Row(
-                  children: [
-                    Expanded(
-                      child: _buildQuickActionButton(
-                        context,
-                        icon: Icons.swap_horiz,
-                        label: 'Internal Transfer',
-                        color: Colors.blue,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildQuickActionButton(
-                        context,
-                        icon: Icons.send,
-                        label: 'External Transfer',
-                        color: Colors.purple,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildQuickActionButton(
-                        context,
-                        icon: Icons.description,
-                        label: 'Bank Letter',
-                        color: Colors.green,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildQuickActionButton(
-                        context,
-                        icon: Icons.add_circle_outline,
-                        label: 'Add Account',
-                        color: Colors.grey,
-                      ),
-                    ),
-                  ],
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: quickActions.asMap().entries.map((entry) {
+              final index = entry.key;
+              final action = entry.value;
+              return Padding(
+                padding: EdgeInsets.only(bottom: index < quickActions.length - 1 ? 12 : 0),
+                child: _buildQuickActionButton(
+                  context,
+                  index: index,
+                  icon: action['icon'] as IconData,
+                  label: action['label'] as String,
+                  color: action['color'] as Color,
+                  onTap: action['onTap'] as VoidCallback,
                 ),
+              );
+            }).toList(),
+          )
+              : Row(
+            children: quickActions.asMap().entries.map((entry) {
+              final index = entry.key;
+              final action = entry.value;
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: index < quickActions.length - 1 ? 12 : 0),
+                  child: _buildQuickActionButton(
+                    context,
+                    index: index,
+                    icon: action['icon'] as IconData,
+                    label: action['label'] as String,
+                    color: action['color'] as Color,
+                    onTap: action['onTap'] as VoidCallback,
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildQuickActionButton(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required Color color,
-  }) {
+      BuildContext context, {
+        required int index,
+        required IconData icon,
+        required String label,
+        required Color color,
+        required VoidCallback onTap,
+      }) {
     final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
+    final isHovered = _hoveredButtonIndex == index;
 
-    return InkWell(
-      onTap: () {},
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: color.withValues(alpha: 0.3),
-            width: 1.5,
+    return MouseRegion(
+      onEnter: (_) {
+        setState(() {
+          _hoveredButtonIndex = index;
+        });
+      },
+      onExit: (_) {
+        setState(() {
+          _hoveredButtonIndex = null;
+        });
+      },
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(12),
           ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                label,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: color,
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 200),
+            opacity: isHovered ? 0.7 : 1.0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: color, size: 20),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    label,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: color,
+                    ),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -496,7 +859,6 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Table Header
           Row(
             children: [
               Icon(
@@ -515,13 +877,13 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
               const Spacer(),
               if (!isSmallScreen) ...[
                 OutlineButton(
-                  onPressed: () {},
+                  onPressed: _showFilterDialog,
                   icon: Icons.filter_list,
-                  label: 'Filter',
+                  label: statusFilter == null ? 'Filter' : 'Filter: $statusFilter',
                 ),
                 const SizedBox(width: 8),
                 OutlineButton(
-                  onPressed: () {},
+                  onPressed: _refreshData,
                   icon: Icons.refresh,
                   label: 'Refresh',
                 ),
@@ -534,15 +896,15 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
               children: [
                 Expanded(
                   child: OutlineButton(
-                    onPressed: () {},
+                    onPressed: _showFilterDialog,
                     icon: Icons.filter_list,
-                    label: 'Filter',
+                    label: statusFilter == null ? 'Filter' : 'Filter: $statusFilter',
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlineButton(
-                    onPressed: () {},
+                    onPressed: _refreshData,
                     icon: Icons.refresh,
                     label: 'Refresh',
                   ),
@@ -558,155 +920,6 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
             ),
           ),
           const SizedBox(height: 16),
-
-          // Controls Row
-          isSmallScreen
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          'Show',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: colorScheme.outline),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: DropdownButton<int>(
-                            value: rowsPerPage,
-                            underline: const SizedBox(),
-                            items: [10, 25, 50, 100].map((value) {
-                              return DropdownMenuItem<int>(
-                                value: value,
-                                child: Text('$value'),
-                              );
-                            }).toList(),
-                            onChanged: changeRowsPerPage,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'entries',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      onChanged: (value) {
-                        setState(() {
-                          searchQuery = value;
-                        });
-                      },
-                      decoration: InputDecoration(
-                        hintText: 'Search:',
-                        prefixIcon: const Icon(Icons.search, size: 20),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide(color: colorScheme.outline),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide(color: colorScheme.outline),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide(color: colorScheme.primary, width: 2),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 12,
-                        ),
-                        isDense: true,
-                      ),
-                    ),
-                  ],
-                )
-              : Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Show',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: colorScheme.outline),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: DropdownButton<int>(
-                            value: rowsPerPage,
-                            underline: const SizedBox(),
-                            items: [10, 25, 50, 100].map((value) {
-                              return DropdownMenuItem<int>(
-                                value: value,
-                                child: Text('$value'),
-                              );
-                            }).toList(),
-                            onChanged: changeRowsPerPage,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'entries',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(
-                      width: 250,
-                      child: TextField(
-                        onChanged: (value) {
-                          setState(() {
-                            searchQuery = value;
-                          });
-                        },
-                        decoration: InputDecoration(
-                          hintText: 'Search:',
-                          prefixIcon: const Icon(Icons.search, size: 20),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: colorScheme.outline),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: colorScheme.outline),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: colorScheme.primary, width: 2),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 12,
-                          ),
-                          isDense: true,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-          const SizedBox(height: 16),
-
-          // Table
           CustomTable(
             columns: [
               DataColumn(
@@ -782,42 +995,56 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
                 ),
               ),
             ],
-            rows: transfers.isEmpty
+            rows: paginatedTransfers.isEmpty
                 ? []
-                : transfers.map((transfer) {
-                    return DataRow(
-                      cells: [
-                        DataCell(Text(transfer['id'].toString())),
-                        DataCell(Text(transfer['reference'] ?? '')),
-                        DataCell(Text(transfer['fromAccount'] ?? '')),
-                        DataCell(Text(transfer['toAccount'] ?? '')),
-                        DataCell(Text(transfer['amount'] ?? '')),
-                        DataCell(Text(transfer['status'] ?? '')),
-                        DataCell(Text(transfer['requestedBy'] ?? '')),
-                        DataCell(
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.visibility, size: 18),
-                                onPressed: () {},
-                                tooltip: 'View',
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.edit, size: 18),
-                                onPressed: () {},
-                                tooltip: 'Edit',
-                              ),
-                            ],
-                          ),
+                : paginatedTransfers.asMap().entries.map((entry) {
+              final index = entry.key;
+              final transfer = entry.value;
+              return DataRow(
+                cells: [
+                  DataCell(Text('${currentPage * rowsPerPage + index + 1}')),
+                  DataCell(Text(transfer.reference)),
+                  DataCell(Text(transfer.fromAccount)),
+                  DataCell(Text(transfer.toAccount)),
+                  DataCell(Text(transfer.amount)),
+                  DataCell(
+                    BadgeChip(
+                      label: transfer.status,
+                      type: ChipType.status,
+                      statusKey: transfer.status,
+                      statusColorFunc: _getStatusColor,
+                    ),
+                  ),
+                  DataCell(Text(transfer.requestedBy)),
+                  DataCell(
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.visibility, size: 18),
+                          onPressed: () => onViewTransfer(transfer),
+                          tooltip: 'View',
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.edit, size: 18),
+                          onPressed: () => onEditTransfer(transfer),
+                          tooltip: 'Edit',
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete, size: 18),
+                          onPressed: () => deleteTransfer(transfer),
+                          tooltip: 'Delete',
+                          color: Theme.of(context).colorScheme.error,
                         ),
                       ],
-                    );
-                  }).toList(),
+                    ),
+                  ),
+                ],
+              );
+            }).toList(),
             minTableWidth: 1100,
           ),
-          
-          if (transfers.isEmpty) ...[
+          if (paginatedTransfers.isEmpty) ...[
             const SizedBox(height: 40),
             Center(
               child: Column(
@@ -839,138 +1066,18 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
             ),
             const SizedBox(height: 40),
           ],
-
-          if (transfers.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            // Pagination
-            isSmallScreen
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        'Showing ${currentPage * rowsPerPage + 1} to ${((currentPage + 1) * rowsPerPage).clamp(0, transfers.length)} of ${transfers.length} entries',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurface.withValues(alpha: 0.7),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _buildPaginationControls(context, colorScheme),
-                    ],
-                  )
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Showing ${currentPage * rowsPerPage + 1} to ${((currentPage + 1) * rowsPerPage).clamp(0, transfers.length)} of ${transfers.length} entries',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurface.withValues(alpha: 0.7),
-                        ),
-                      ),
-                      _buildPaginationControls(context, colorScheme),
-                    ],
-                  ),
+          if (filteredTransfers.isNotEmpty) ...[
+            CustomPaginationBar(
+              totalItems: filteredTransfers.length,
+              currentPage: currentPage,
+              rowsPerPage: rowsPerPage,
+              onPageChanged: gotoPage,
+              onRowsPerPageChanged: changeRowsPerPage,
+              availableRowsPerPage: const [5, 10, 20, 50],
+            ),
           ],
         ],
       ),
-    );
-  }
-
-  Widget _buildPaginationControls(BuildContext context, ColorScheme colorScheme) {
-    final totalPages = (transfers.length / rowsPerPage).ceil();
-    final theme = Theme.of(context);
-    
-    // Generate page numbers to display (max 3 pages)
-    List<int> pageNumbers = [];
-    if (totalPages <= 3) {
-      pageNumbers = List.generate(totalPages, (index) => index);
-    } else {
-      if (currentPage == 0) {
-        pageNumbers = [0, 1, 2];
-      } else if (currentPage == totalPages - 1) {
-        pageNumbers = [totalPages - 3, totalPages - 2, totalPages - 1];
-      } else {
-        pageNumbers = [currentPage - 1, currentPage, currentPage + 1];
-      }
-    }
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      alignment: WrapAlignment.end,
-      children: [
-        IconButton(
-          onPressed: currentPage > 0 ? () => gotoPage(currentPage - 1) : null,
-          icon: const Icon(Icons.arrow_back_ios, size: 16),
-          style: IconButton.styleFrom(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-              side: BorderSide(color: colorScheme.outline),
-            ),
-          ),
-        ),
-        ...pageNumbers.map((pageIndex) {
-          final isActive = pageIndex == currentPage;
-          return InkWell(
-            onTap: () => gotoPage(pageIndex),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: isActive ? colorScheme.primary : null,
-                border: Border.all(
-                  color: isActive ? colorScheme.primary : colorScheme.outline,
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                '${pageIndex + 1}',
-                style: TextStyle(
-                  color: isActive ? Colors.white : colorScheme.onSurface,
-                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-            ),
-          );
-        }),
-        IconButton(
-          onPressed: currentPage < totalPages - 1 ? () => gotoPage(currentPage + 1) : null,
-          icon: const Icon(Icons.arrow_forward_ios, size: 16),
-          style: IconButton.styleFrom(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-              side: BorderSide(color: colorScheme.outline),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            border: Border.all(color: colorScheme.outline),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: DropdownButton<int>(
-            value: totalPages,
-            underline: const SizedBox(),
-            items: List.generate(totalPages, (index) => index + 1).map((value) {
-              return DropdownMenuItem<int>(
-                value: value,
-                child: Text('$value'),
-              );
-            }).toList(),
-            onChanged: (value) {
-              if (value != null) {
-                gotoPage(value - 1);
-              }
-            },
-          ),
-        ),
-        Text(
-          'page',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: colorScheme.onSurface,
-          ),
-        ),
-      ],
     );
   }
 }

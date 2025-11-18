@@ -37,7 +37,7 @@ class Header extends StatelessWidget implements PreferredSizeWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              'Finance',
+              'Dashboard',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 24,
@@ -47,7 +47,7 @@ class Header extends StatelessWidget implements PreferredSizeWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              'Manage your financial transactions and reports',
+              'Manage your business operations and reports',
               style: TextStyle(
                 fontWeight: FontWeight.w400,
                 fontSize: 15,

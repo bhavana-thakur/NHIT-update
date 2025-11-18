@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:ppv_components/common_widgets/button/outlined_button.dart';
 import 'package:ppv_components/common_widgets/button/toggle_button.dart';
 import 'package:ppv_components/common_widgets/custom_table.dart';
 import 'package:ppv_components/features/vendor/models/vendor_model.dart';

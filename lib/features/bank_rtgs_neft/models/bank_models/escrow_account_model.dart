@@ -23,4 +23,22 @@ class EscrowAccount {
         status: m['status'] ?? '',
         balance: m['balance'] ?? '',
       );
+
+  EscrowAccount copyWith({
+    String? accountName,
+    String? accountNumber,
+    String? bank,
+    String? type,
+    String? status,
+    String? balance,
+  }) {
+    return EscrowAccount(
+      accountName: accountName ?? this.accountName,
+      accountNumber: accountNumber ?? this.accountNumber,
+      bank: bank ?? this.bank,
+      type: type ?? this.type,
+      status: status ?? this.status,
+      balance: balance ?? this.balance,
+    );
+  }
 }

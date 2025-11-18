@@ -226,7 +226,7 @@
                               value: isActive,
                               onChanged: (value) =>
                                   setState(() => isActive = value),
-                              activeColor: colorScheme.primary,
+                              activeThumbColor: colorScheme.primary,
                             ),
                             const SizedBox(width: 10),
                             Text(

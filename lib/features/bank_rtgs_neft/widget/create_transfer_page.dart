@@ -16,21 +16,24 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
   String? selectedTransferMode;
   String? hoveredTransferType;
   String? hoveredTransferMode;
-  
+
   // Form controllers
   final _transferAmountController = TextEditingController();
   final _purposeController = TextEditingController();
   final _remarksController = TextEditingController();
-  
+
   // Dropdown values
   String? selectedSourceAccount;
   String? selectedDestinationAccount;
   String? selectedVendor;
-  
+
   // Dynamic lists for multiple accounts
   List<Map<String, dynamic>> sourceAccounts = [];
   List<Map<String, dynamic>> destinationAccounts = [];
-  
+
+  // Dynamic lists for External Transfer vendors
+  List<Map<String, dynamic>> vendorRows = [];
+
   // Mock account data - replace with actual data
   final List<String> availableAccounts = [
     'Main Account - ACC001',
@@ -38,43 +41,73 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
     'Business Account - ACC003',
     'Project Account - ACC004',
   ];
-  
+
   final List<String> availableVendors = [
     'Vendor A - VEN001',
     'Vendor B - VEN002',
     'Vendor C - VEN003',
   ];
-  
+
   void _addSourceAccount() {
     setState(() {
       sourceAccounts.add({
         'account': null,
-        'amount': TextEditingController(),
+        'amount': TextEditingController(text: '0.00'),
       });
     });
   }
-  
+
   void _removeSourceAccount(int index) {
     setState(() {
       sourceAccounts[index]['amount'].dispose();
       sourceAccounts.removeAt(index);
     });
   }
-  
+
   void _addDestinationAccount() {
     setState(() {
       destinationAccounts.add({
         'account': null,
-        'amount': TextEditingController(),
+        'amount': TextEditingController(text: '0.00'),
       });
     });
   }
-  
+
   void _removeDestinationAccount(int index) {
     setState(() {
       destinationAccounts[index]['amount'].dispose();
       destinationAccounts.removeAt(index);
     });
+  }
+
+  void _addVendorRow() {
+    setState(() {
+      vendorRows.add({
+        'vendor': null,
+        'amount': TextEditingController(text: '0.00'),
+      });
+    });
+  }
+
+  void _removeVendorRow(int index) {
+    setState(() {
+      vendorRows[index]['amount'].dispose();
+      vendorRows.removeAt(index);
+    });
+  }
+
+  void _incrementAmount(TextEditingController controller, {double step = 0.01}) {
+    final currentValue = double.tryParse(controller.text) ?? 0.0;
+    final newValue = currentValue + step;
+    controller.text = newValue.toStringAsFixed(2);
+    setState(() {});
+  }
+
+  void _decrementAmount(TextEditingController controller, {double step = 0.01}) {
+    final currentValue = double.tryParse(controller.text) ?? 0.0;
+    final newValue = (currentValue - step).clamp(0.0, double.infinity);
+    controller.text = newValue.toStringAsFixed(2);
+    setState(() {});
   }
 
   @override
@@ -88,6 +121,9 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
     }
     for (var account in destinationAccounts) {
       account['amount']?.dispose();
+    }
+    for (var vendor in vendorRows) {
+      vendor['amount']?.dispose();
     }
     super.dispose();
   }
@@ -131,7 +167,6 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
@@ -146,7 +181,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                   // Header Section
                   _buildHeader(context, constraints),
                   const SizedBox(height: 24),
-                  
+
                   // Form Section
                   _buildFormSection(context, constraints),
                 ],
@@ -181,7 +216,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.1),
+                  color: colorScheme.primary.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -206,7 +241,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                     Text(
                       'Transfer funds between accounts or to vendors',
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurface.withValues(alpha: 0.7),
+                        color: colorScheme.onSurface.withOpacity(0.7),
                       ),
                     ),
                   ],
@@ -232,6 +267,67 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           ],
         ],
       ),
+    );
+  }
+
+  // Stepper field widget for decimal amounts (matching payment screen style)
+  Widget _buildAmountStepperField({
+    required TextEditingController controller,
+    String? label,
+    Color? accentColor,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final effectiveAccentColor = accentColor ?? colorScheme.primary;
+
+    return TextFormField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(
+        labelText: label ?? 'Amount (₹)',
+        filled: true,
+        fillColor: colorScheme.surface,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
+        suffixIcon: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              height: 24,
+              width: 24,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                iconSize: 20,
+                icon: Icon(
+                  Icons.arrow_drop_up,
+                  color: effectiveAccentColor,
+                ),
+                onPressed: () => _incrementAmount(controller, step: 0.01),
+                tooltip: 'Increase',
+              ),
+            ),
+            SizedBox(
+              height: 24,
+              width: 24,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                iconSize: 20,
+                icon: Icon(
+                  Icons.arrow_drop_down,
+                  color: effectiveAccentColor,
+                ),
+                onPressed: () => _decrementAmount(controller, step: 0.01),
+                tooltip: 'Decrease',
+              ),
+            ),
+          ],
+        ),
+      ),
+      onChanged: (_) => setState(() {}),
     );
   }
 
@@ -300,14 +396,12 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
             // Transfer Type Cards - Responsive layout
             LayoutBuilder(
               builder: (context, constraints) {
-                // Calculate how many cards can fit
-                final cardWidth = 340.0; // Fixed card width matching the image
+                final cardWidth = 340.0;
                 final spacing = 16.0;
                 final availableWidth = constraints.maxWidth;
                 final cardsPerRow = (availableWidth / (cardWidth + spacing)).floor();
-                
+
                 if (cardsPerRow >= 2) {
-                  // Show cards in a row if 2 or more can fit
                   return Wrap(
                     spacing: spacing,
                     runSpacing: 16,
@@ -325,7 +419,6 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                     }).toList(),
                   );
                 } else {
-                  // Show cards in a column with full width if only 1 can fit
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: transferTypes.map((type) {
@@ -345,7 +438,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
               },
             ),
 
-            // Transfer Mode Section (only show if transfer type is selected)
+            // Transfer Mode Section
             if (selectedTransferType != null) ...[
               const SizedBox(height: 24),
               Row(
@@ -369,17 +462,15 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
               ),
               const SizedBox(height: 16),
 
-              // Transfer Mode Cards - Responsive layout
+              // Transfer Mode Cards
               LayoutBuilder(
                 builder: (context, constraints) {
-                  // Calculate how many cards can fit
-                  final cardWidth = 340.0; // Fixed card width matching the image
+                  final cardWidth = 340.0;
                   final spacing = 16.0;
                   final availableWidth = constraints.maxWidth;
                   final cardsPerRow = (availableWidth / (cardWidth + spacing)).floor();
-                  
+
                   if (cardsPerRow >= 3) {
-                    // Show all 3 cards in a row
                     return Wrap(
                       spacing: spacing,
                       runSpacing: 16,
@@ -397,7 +488,6 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                       }).toList(),
                     );
                   } else if (cardsPerRow == 2) {
-                    // Show 2 cards per row, 3rd card on next row
                     return Wrap(
                       spacing: spacing,
                       runSpacing: 16,
@@ -415,7 +505,6 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                       }).toList(),
                     );
                   } else {
-                    // Show cards in a column with full width if only 1 can fit
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: transferModes.map((mode) {
@@ -436,7 +525,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
               ),
             ],
 
-            // Dynamic Form Fields based on selected transfer mode
+            // Dynamic Form Fields
             if (selectedTransferMode != null) ...[
               const SizedBox(height: 24),
               _buildDynamicFormFields(context, isSmallScreen),
@@ -447,37 +536,37 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
             // Action Buttons
             isSmallScreen
                 ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      OutlineButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: Icons.cancel_outlined,
-                        label: 'Cancel',
-                      ),
-                      const SizedBox(height: 12),
-                      PrimaryButton(
-                        onPressed: _createTransfer,
-                        icon: Icons.check_circle_outline,
-                        label: 'Create Transfer',
-                      ),
-                    ],
-                  )
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                OutlineButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: Icons.cancel_outlined,
+                  label: 'Cancel',
+                ),
+                const SizedBox(height: 12),
+                PrimaryButton(
+                  onPressed: _createTransfer,
+                  icon: Icons.check_circle_outline,
+                  label: 'Create Transfer',
+                ),
+              ],
+            )
                 : Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      OutlineButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: Icons.cancel_outlined,
-                        label: 'Cancel',
-                      ),
-                      const SizedBox(width: 12),
-                      PrimaryButton(
-                        onPressed: _createTransfer,
-                        icon: Icons.check_circle_outline,
-                        label: 'Create Transfer',
-                      ),
-                    ],
-                  ),
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                OutlineButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: Icons.cancel_outlined,
+                  label: 'Cancel',
+                ),
+                const SizedBox(width: 12),
+                PrimaryButton(
+                  onPressed: _createTransfer,
+                  icon: Icons.check_circle_outline,
+                  label: 'Create Transfer',
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -485,6 +574,8 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
   }
 
   Widget _buildDynamicFormFields(BuildContext context, bool isSmallScreen) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -514,7 +605,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
             },
           ),
         ],
-        
+
         // One to Many Mode - Internal Transfer
         if (selectedTransferMode == 'One to Many' && selectedTransferType == 'Internal Transfer') ...[
           _buildDropdownField(
@@ -542,104 +633,82 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
             ],
           ),
           const SizedBox(height: 12),
-          // Destination accounts list
           if (destinationAccounts.isNotEmpty)
             ...List.generate(destinationAccounts.length, (index) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (index == 0)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              'Destination Account',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.w600,
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (index == 0)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                'Destination Account',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
+                          CustomDropdown(
+                            value: destinationAccounts[index]['account'],
+                            items: availableAccounts,
+                            hint: 'Select account',
+                            onChanged: (value) {
+                              setState(() {
+                                destinationAccounts[index]['account'] = value;
+                              });
+                            },
                           ),
-                        CustomDropdown(
-                          value: destinationAccounts[index]['account'],
-                          items: availableAccounts,
-                          hint: 'Select account',
-                          onChanged: (value) {
-                            setState(() {
-                              destinationAccounts[index]['account'] = value;
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (index == 0)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              'Amount',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        TextFormField(
-                          controller: destinationAccounts[index]['amount'],
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            hintText: '0.00',
-                            prefixText: '₹  ',
-                            hintStyle: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    children: [
-                      if (index == 0) const SizedBox(height: 32),
-                      IconButton(
-                        onPressed: () => _removeDestinationAccount(index),
-                        icon: const Icon(Icons.delete_outline),
-                        color: Colors.red,
-                        style: IconButton.styleFrom(
-                          backgroundColor: Colors.red.withValues(alpha: 0.1),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          }),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (index == 0)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                'Amount',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          _buildAmountStepperField(
+                            controller: destinationAccounts[index]['amount'],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      children: [
+                        if (index == 0) const SizedBox(height: 32),
+                        IconButton(
+                          onPressed: () => _removeDestinationAccount(index),
+                          icon: const Icon(Icons.delete_outline),
+                          color: Colors.red,
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.red.withOpacity(0.1),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
           const SizedBox(height: 8),
           OutlineButton(
             onPressed: _addDestinationAccount,
@@ -647,7 +716,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
             label: 'Add Destination Account',
           ),
         ],
-        
+
         // Many to Many Mode - Internal Transfer
         if (selectedTransferMode == 'Many to Many' && selectedTransferType == 'Internal Transfer') ...[
           Row(
@@ -663,94 +732,82 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
             ],
           ),
           const SizedBox(height: 12),
-          // Source accounts list
           if (sourceAccounts.isNotEmpty)
             ...List.generate(sourceAccounts.length, (index) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (index == 0)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              'Source Account',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.w600,
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (index == 0)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                'Source Account',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
+                          CustomDropdown(
+                            value: sourceAccounts[index]['account'],
+                            items: availableAccounts,
+                            hint: 'Select account',
+                            onChanged: (value) {
+                              setState(() {
+                                sourceAccounts[index]['account'] = value;
+                              });
+                            },
                           ),
-                        CustomDropdown(
-                          value: sourceAccounts[index]['account'],
-                          items: availableAccounts,
-                          hint: 'Select account',
-                          onChanged: (value) {
-                            setState(() {
-                              sourceAccounts[index]['account'] = value;
-                            });
-                          },
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (index == 0)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                'Amount',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          _buildAmountStepperField(
+                            controller: sourceAccounts[index]['amount'],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      children: [
+                        if (index == 0) const SizedBox(height: 32),
+                        IconButton(
+                          onPressed: () => _removeSourceAccount(index),
+                          icon: const Icon(Icons.delete_outline),
+                          color: Colors.red,
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.red.withOpacity(0.1),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (index == 0)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              'Amount',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        TextFormField(
-                          controller: sourceAccounts[index]['amount'],
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            hintText: '0.00',
-                            prefixText: '₹  ',
-                            hintStyle: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    children: [
-                      if (index == 0) const SizedBox(height: 32),
-                      const SizedBox(width: 48),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          }),
+                  ],
+                ),
+              );
+            }),
           const SizedBox(height: 8),
           OutlineButton(
             onPressed: _addSourceAccount,
@@ -771,104 +828,82 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
             ],
           ),
           const SizedBox(height: 12),
-          // Destination accounts list
           if (destinationAccounts.isNotEmpty)
             ...List.generate(destinationAccounts.length, (index) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (index == 0)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              'Destination Account',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.w600,
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (index == 0)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                'Destination Account',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
+                          CustomDropdown(
+                            value: destinationAccounts[index]['account'],
+                            items: availableAccounts,
+                            hint: 'Select account',
+                            onChanged: (value) {
+                              setState(() {
+                                destinationAccounts[index]['account'] = value;
+                              });
+                            },
                           ),
-                        CustomDropdown(
-                          value: destinationAccounts[index]['account'],
-                          items: availableAccounts,
-                          hint: 'Select account',
-                          onChanged: (value) {
-                            setState(() {
-                              destinationAccounts[index]['account'] = value;
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (index == 0)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              'Amount',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        TextFormField(
-                          controller: destinationAccounts[index]['amount'],
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            hintText: '0.00',
-                            prefixText: '₹  ',
-                            hintStyle: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    children: [
-                      if (index == 0) const SizedBox(height: 32),
-                      IconButton(
-                        onPressed: () => _removeDestinationAccount(index),
-                        icon: const Icon(Icons.delete_outline),
-                        color: Colors.red,
-                        style: IconButton.styleFrom(
-                          backgroundColor: Colors.red.withValues(alpha: 0.1),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          }),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (index == 0)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                'Amount',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          _buildAmountStepperField(
+                            controller: destinationAccounts[index]['amount'],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      children: [
+                        if (index == 0) const SizedBox(height: 32),
+                        IconButton(
+                          onPressed: () => _removeDestinationAccount(index),
+                          icon: const Icon(Icons.delete_outline),
+                          color: Colors.red,
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.red.withOpacity(0.1),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
           const SizedBox(height: 8),
           OutlineButton(
             onPressed: _addDestinationAccount,
@@ -876,7 +911,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
             label: 'Add Destination Account',
           ),
         ],
-        
+
         // One to One Mode - External Transfer
         if (selectedTransferMode == 'One to One' && selectedTransferType == 'External Transfer') ...[
           _buildDropdownField(
@@ -903,7 +938,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
             },
           ),
         ],
-        
+
         // One to Many Mode - External Transfer
         if (selectedTransferMode == 'One to Many' && selectedTransferType == 'External Transfer') ...[
           _buildDropdownField(
@@ -918,19 +953,104 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
             },
           ),
           const SizedBox(height: 16),
-          _buildDropdownField(
-            label: 'Vendor',
-            value: selectedVendor,
-            items: availableVendors,
-            isRequired: true,
-            onChanged: (value) {
-              setState(() {
-                selectedVendor = value;
-              });
-            },
+          Row(
+            children: [
+              Text(
+                'Vendors',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text('*', style: TextStyle(color: Colors.red, fontSize: 16)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (vendorRows.isNotEmpty)
+            ...List.generate(vendorRows.length, (index) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (index == 0)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                'Vendor',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          CustomDropdown(
+                            value: vendorRows[index]['vendor'],
+                            items: availableVendors,
+                            hint: 'Select vendor',
+                            onChanged: (value) {
+                              setState(() {
+                                vendorRows[index]['vendor'] = value;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (index == 0)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                'Amount',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          _buildAmountStepperField(
+                            controller: vendorRows[index]['amount'],
+                            accentColor: Colors.green,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      children: [
+                        if (index == 0) const SizedBox(height: 32),
+                        IconButton(
+                          onPressed: () => _removeVendorRow(index),
+                          icon: const Icon(Icons.delete_outline),
+                          color: Colors.red,
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.red.withOpacity(0.1),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
+          const SizedBox(height: 8),
+          OutlineButton(
+            onPressed: _addVendorRow,
+            icon: Icons.add,
+            label: 'Add Vendor',
           ),
         ],
-        
+
         // Many to Many Mode - External Transfer
         if (selectedTransferMode == 'Many to Many' && selectedTransferType == 'External Transfer') ...[
           Row(
@@ -946,175 +1066,236 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
             ],
           ),
           const SizedBox(height: 12),
-          // Source accounts list
           if (sourceAccounts.isNotEmpty)
             ...List.generate(sourceAccounts.length, (index) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (index == 0)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              'Source Account',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.w600,
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (index == 0)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                'Source Account',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
+                          CustomDropdown(
+                            value: sourceAccounts[index]['account'],
+                            items: availableAccounts,
+                            hint: 'Select account',
+                            onChanged: (value) {
+                              setState(() {
+                                sourceAccounts[index]['account'] = value;
+                              });
+                            },
                           ),
-                        CustomDropdown(
-                          value: sourceAccounts[index]['account'],
-                          items: availableAccounts,
-                          hint: 'Select account',
-                          onChanged: (value) {
-                            setState(() {
-                              sourceAccounts[index]['account'] = value;
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (index == 0)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              'Amount',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        TextFormField(
-                          controller: sourceAccounts[index]['amount'],
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            hintText: '0.00',
-                            prefixText: '₹  ',
-                            hintStyle: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    children: [
-                      if (index == 0) const SizedBox(height: 32),
-                      IconButton(
-                        onPressed: () => _removeSourceAccount(index),
-                        icon: const Icon(Icons.delete_outline),
-                        color: Colors.red,
-                        style: IconButton.styleFrom(
-                          backgroundColor: Colors.red.withValues(alpha: 0.1),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          }),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (index == 0)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                'Amount',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          _buildAmountStepperField(
+                            controller: sourceAccounts[index]['amount'],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      children: [
+                        if (index == 0) const SizedBox(height: 32),
+                        IconButton(
+                          onPressed: () => _removeSourceAccount(index),
+                          icon: const Icon(Icons.delete_outline),
+                          color: Colors.red,
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.red.withOpacity(0.1),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
           const SizedBox(height: 8),
-          PrimaryButton(
+          OutlineButton(
             onPressed: _addSourceAccount,
             icon: Icons.add,
             label: 'Add Source Account',
           ),
           const SizedBox(height: 16),
-          _buildDropdownField(
-            label: 'Vendor',
-            value: selectedVendor,
-            items: availableVendors,
-            isRequired: true,
-            onChanged: (value) {
-              setState(() {
-                selectedVendor = value;
-              });
-            },
+          Row(
+            children: [
+              Text(
+                'Vendors',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text('*', style: TextStyle(color: Colors.red, fontSize: 16)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (vendorRows.isNotEmpty)
+            ...List.generate(vendorRows.length, (index) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (index == 0)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                'Vendor',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          CustomDropdown(
+                            value: vendorRows[index]['vendor'],
+                            items: availableVendors,
+                            hint: 'Select vendor',
+                            onChanged: (value) {
+                              setState(() {
+                                vendorRows[index]['vendor'] = value;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (index == 0)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                'Amount',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          _buildAmountStepperField(
+                            controller: vendorRows[index]['amount'],
+                            accentColor: Colors.green,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      children: [
+                        if (index == 0) const SizedBox(height: 32),
+                        IconButton(
+                          onPressed: () => _removeVendorRow(index),
+                          icon: const Icon(Icons.delete_outline),
+                          color: Colors.red,
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.red.withOpacity(0.1),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
+          const SizedBox(height: 8),
+          OutlineButton(
+            onPressed: _addVendorRow,
+            icon: Icons.add,
+            label: 'Add Vendor',
           ),
         ],
-        
+
         // Common fields for all modes
         const SizedBox(height: 16),
-        _buildTextField(
-          label: 'Transfer Amount',
-          hint: '0.00',
+        _buildAmountStepperField(
           controller: _transferAmountController,
-          isRequired: true,
-          prefixText: '₹  ',
+          label: 'Transfer Amount (₹)',
         ),
         const SizedBox(height: 16),
         isSmallScreen
             ? Column(
-                children: [
-                  _buildTextField(
-                    label: 'Purpose',
-                    hint: 'Enter transfer purpose',
-                    controller: _purposeController,
-                    isRequired: true,
-                    maxLines: 3,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildTextField(
-                    label: 'Remarks',
-                    hint: 'Enter additional remarks (optional)',
-                    controller: _remarksController,
-                    maxLines: 3,
-                  ),
-                ],
-              )
+          children: [
+            _buildTextField(
+              label: 'Purpose',
+              hint: 'Enter transfer purpose',
+              controller: _purposeController,
+              isRequired: true,
+              maxLines: 3,
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              label: 'Remarks',
+              hint: 'Enter additional remarks (optional)',
+              controller: _remarksController,
+              maxLines: 3,
+            ),
+          ],
+        )
             : Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: _buildTextField(
-                      label: 'Purpose',
-                      hint: 'Enter transfer purpose',
-                      controller: _purposeController,
-                      isRequired: true,
-                      maxLines: 3,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _buildTextField(
-                      label: 'Remarks',
-                      hint: 'Enter additional remarks (optional)',
-                      controller: _remarksController,
-                      maxLines: 3,
-                    ),
-                  ),
-                ],
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _buildTextField(
+                label: 'Purpose',
+                hint: 'Enter transfer purpose',
+                controller: _purposeController,
+                isRequired: true,
+                maxLines: 3,
               ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildTextField(
+                label: 'Remarks',
+                hint: 'Enter additional remarks (optional)',
+                controller: _remarksController,
+                maxLines: 3,
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -1128,7 +1309,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
     String? prefixText,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1162,7 +1343,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
             hintText: hint,
             prefixText: prefixText,
             hintStyle: TextStyle(
-              color: colorScheme.onSurface.withValues(alpha: 0.5),
+              color: colorScheme.onSurface.withOpacity(0.5),
             ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -1183,11 +1364,11 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           ),
           validator: isRequired
               ? (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'This field is required';
-                  }
-                  return null;
-                }
+            if (value == null || value.isEmpty) {
+              return 'This field is required';
+            }
+            return null;
+          }
               : null,
         ),
       ],
@@ -1202,7 +1383,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
     bool isRequired = false,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1239,12 +1420,12 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
   }
 
   Widget _buildTransferTypeCard(
-    BuildContext context, {
-    required String type,
-    required IconData icon,
-    required Color color,
-    required String description,
-  }) {
+      BuildContext context, {
+        required String type,
+        required IconData icon,
+        required Color color,
+        required String description,
+      }) {
     final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
     final isSelected = selectedTransferType == type;
@@ -1265,8 +1446,11 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
         onTap: () {
           setState(() {
             selectedTransferType = type;
-            // Reset transfer mode when changing transfer type
             selectedTransferMode = null;
+            // Clear all dynamic lists
+            sourceAccounts.clear();
+            destinationAccounts.clear();
+            vendorRows.clear();
           });
         },
         borderRadius: BorderRadius.circular(12),
@@ -1287,7 +1471,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
+                  color: color.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -1309,7 +1493,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
               Text(
                 description,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
+                  color: colorScheme.onSurface.withOpacity(0.7),
                 ),
                 textAlign: TextAlign.center,
                 maxLines: 2,
@@ -1323,12 +1507,12 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
   }
 
   Widget _buildTransferModeCard(
-    BuildContext context, {
-    required String mode,
-    required IconData icon,
-    required Color color,
-    required String description,
-  }) {
+      BuildContext context, {
+        required String mode,
+        required IconData icon,
+        required Color color,
+        required String description,
+      }) {
     final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
     final isSelected = selectedTransferMode == mode;
@@ -1349,9 +1533,9 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
         onTap: () {
           setState(() {
             selectedTransferMode = mode;
-            // Clear dynamic lists and selections when changing transfer mode
             sourceAccounts.clear();
             destinationAccounts.clear();
+            vendorRows.clear();
             selectedSourceAccount = null;
             selectedDestinationAccount = null;
             selectedVendor = null;
@@ -1375,7 +1559,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
+                  color: color.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
@@ -1397,7 +1581,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
               Text(
                 description,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
+                  color: colorScheme.onSurface.withOpacity(0.7),
                   fontSize: 11,
                 ),
                 textAlign: TextAlign.center,
@@ -1439,7 +1623,6 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           backgroundColor: Colors.green,
         ),
       );
-      // Add your transfer creation logic here
     }
   }
 }

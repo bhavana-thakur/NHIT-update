@@ -2,9 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:ppv_components/common_widgets/button/primary_button.dart';
 import 'package:ppv_components/common_widgets/button/outlined_button.dart';
 import 'package:ppv_components/common_widgets/custom_table.dart';
+import 'package:ppv_components/common_widgets/pagination.dart';
+import 'package:ppv_components/common_widgets/badge.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/widget/%20edit_bank_letter_content.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/escrow_accounts_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/account_transfers_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/create_bank_letter_page.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/models/bank_models/bank_letter_model.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/data/bank_dummydata/bank_letter_dummy.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/widget/view_bank_letter_detail.dart';
 
 class BankLettersPage extends StatefulWidget {
   const BankLettersPage({super.key});
@@ -14,16 +20,32 @@ class BankLettersPage extends StatefulWidget {
 }
 
 class _BankLettersPageState extends State<BankLettersPage> {
-  int rowsPerPage = 25;
+  int rowsPerPage = 10;
   int currentPage = 0;
   String searchQuery = '';
-  
-  // Mock data - replace with actual data
-  final List<Map<String, dynamic>> letters = [];
+  String? statusFilter;
+
+  late List<BankLetter> filteredLetters;
+  late List<BankLetter> paginatedLetters;
+  late List<BankLetter> allLetters;
+
+  // Edit and View mode state
+  bool _isEditMode = false;
+  bool _isViewMode = false;
+  BankLetter? _letterToEdit;
 
   @override
   void initState() {
     super.initState();
+    allLetters = List<BankLetter>.from(bankLetterDummyData);
+    filteredLetters = allLetters;
+    _updatePagination();
+  }
+
+  void _updatePagination() {
+    final start = currentPage * rowsPerPage;
+    final end = (start + rowsPerPage).clamp(0, filteredLetters.length);
+    paginatedLetters = filteredLetters.sublist(start, end);
   }
 
   void changeRowsPerPage(int? value) {
@@ -31,6 +53,7 @@ class _BankLettersPageState extends State<BankLettersPage> {
       setState(() {
         rowsPerPage = value;
         currentPage = 0;
+        _updatePagination();
       });
     }
   }
@@ -38,17 +61,243 @@ class _BankLettersPageState extends State<BankLettersPage> {
   void gotoPage(int page) {
     setState(() {
       currentPage = page;
+      _updatePagination();
     });
+  }
+
+  void updateSearch(String query) {
+    setState(() {
+      searchQuery = query.toLowerCase();
+      _applyFilters();
+      currentPage = 0;
+      _updatePagination();
+    });
+  }
+
+  void _applyFilters() {
+    filteredLetters = allLetters.where((letter) {
+      final matchesSearch = searchQuery.isEmpty ||
+          letter.reference.toLowerCase().contains(searchQuery) ||
+          letter.type.toLowerCase().contains(searchQuery) ||
+          letter.subject.toLowerCase().contains(searchQuery) ||
+          letter.status.toLowerCase().contains(searchQuery);
+
+      final matchesStatus = statusFilter == null ||
+          statusFilter == 'All' ||
+          letter.status == statusFilter;
+
+      return matchesSearch && matchesStatus;
+    }).toList();
+  }
+
+  void _refreshData() {
+    setState(() {
+      statusFilter = null;
+      searchQuery = '';
+      filteredLetters = allLetters;
+      currentPage = 0;
+      _updatePagination();
+    });
+  }
+
+  void _showFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Filter Bank Letters'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('All'),
+                leading: Radio<String?>(
+                  value: null,
+                  groupValue: statusFilter,
+                  onChanged: (value) {
+                    setState(() {
+                      statusFilter = value;
+                    });
+                    Navigator.pop(context);
+                    _applyFilters();
+                    _updatePagination();
+                  },
+                ),
+              ),
+              ListTile(
+                title: const Text('Sent'),
+                leading: Radio<String>(
+                  value: 'Sent',
+                  groupValue: statusFilter,
+                  onChanged: (value) {
+                    setState(() {
+                      statusFilter = value;
+                    });
+                    Navigator.pop(context);
+                    _applyFilters();
+                    _updatePagination();
+                  },
+                ),
+              ),
+              ListTile(
+                title: const Text('Pending Approval'),
+                leading: Radio<String>(
+                  value: 'Pending Approval',
+                  groupValue: statusFilter,
+                  onChanged: (value) {
+                    setState(() {
+                      statusFilter = value;
+                    });
+                    Navigator.pop(context);
+                    _applyFilters();
+                    _updatePagination();
+                  },
+                ),
+              ),
+              ListTile(
+                title: const Text('Draft'),
+                leading: Radio<String>(
+                  value: 'Draft',
+                  groupValue: statusFilter,
+                  onChanged: (value) {
+                    setState(() {
+                      statusFilter = value;
+                    });
+                    Navigator.pop(context);
+                    _applyFilters();
+                    _updatePagination();
+                  },
+                ),
+              ),
+              ListTile(
+                title: const Text('Approved'),
+                leading: Radio<String>(
+                  value: 'Approved',
+                  groupValue: statusFilter,
+                  onChanged: (value) {
+                    setState(() {
+                      statusFilter = value;
+                    });
+                    Navigator.pop(context);
+                    _applyFilters();
+                    _updatePagination();
+                  },
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'sent':
+        return Colors.green;
+      case 'pending approval':
+        return Colors.orange;
+      case 'draft':
+        return Colors.grey;
+      case 'approved':
+        return Colors.blue;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  void onViewLetter(BankLetter letter) {
+    setState(() {
+      _isViewMode = true;
+      _isEditMode = false;
+      _letterToEdit = letter;
+    });
+  }
+
+  void onEditLetter(BankLetter letter) {
+    setState(() {
+      _isEditMode = true;
+      _isViewMode = false;
+      _letterToEdit = letter;
+    });
+  }
+
+  void _saveEditedLetter(BankLetter updatedLetter) {
+    final index = allLetters.indexWhere((l) => l.id == _letterToEdit!.id);
+    if (index != -1) {
+      setState(() {
+        allLetters[index] = updatedLetter;
+        _isEditMode = false;
+        _isViewMode = false;
+        _letterToEdit = null;
+        _applyFilters();
+        _updatePagination();
+      });
+    }
+  }
+
+  void _cancelEdit() {
+    setState(() {
+      _isEditMode = false;
+      _isViewMode = false;
+      _letterToEdit = null;
+    });
+  }
+
+  Future<void> deleteLetter(BankLetter letter) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirm Delete'),
+        content: Text('Are you sure you want to delete bank letter ${letter.reference}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (shouldDelete == true) {
+      setState(() {
+        allLetters.removeWhere((l) => l.id == letter.id);
+        _applyFilters();
+        _updatePagination();
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      body: LayoutBuilder(
+      body: _letterToEdit != null
+          ? (_isEditMode
+          ? EditBankLetterContent(
+        letter: _letterToEdit!,
+        onSave: _saveEditedLetter,
+        onCancel: _cancelEdit,
+      )
+          : ViewBankLetterDetail(
+        letter: _letterToEdit!,
+        onClose: _cancelEdit,
+      ))
+          : LayoutBuilder(
         builder: (context, constraints) {
           return SingleChildScrollView(
             child: Padding(
@@ -56,15 +305,10 @@ class _BankLettersPageState extends State<BankLettersPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header Section
                   _buildHeader(context, constraints),
                   const SizedBox(height: 16),
-                  
-                  // Stats Cards
                   _buildStatsCards(context, constraints),
                   const SizedBox(height: 16),
-                  
-                  // Table Section
                   _buildTableSection(context, constraints),
                 ],
               ),
@@ -197,9 +441,7 @@ class _BankLettersPageState extends State<BankLettersPage> {
 
   Widget _buildStatsCards(BuildContext context, BoxConstraints constraints) {
     final colorScheme = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
-    
-    // Determine columns based on screen width
+
     int crossAxisCount = 4;
     if (constraints.maxWidth < 600) {
       crossAxisCount = 1;
@@ -211,25 +453,25 @@ class _BankLettersPageState extends State<BankLettersPage> {
       {
         'icon': Icons.description,
         'label': 'Total Letters',
-        'value': '0',
+        'value': '${allLetters.length}',
         'color': Colors.blue,
       },
       {
         'icon': Icons.pending_actions,
         'label': 'Pending Approval',
-        'value': '0',
+        'value': '${allLetters.where((l) => l.status == "Pending Approval").length}',
         'color': Colors.orange,
       },
       {
         'icon': Icons.send,
         'label': 'Sent Letters',
-        'value': '0',
+        'value': '${allLetters.where((l) => l.status == "Sent").length}',
         'color': Colors.green,
       },
       {
         'icon': Icons.drafts,
         'label': 'Draft Letters',
-        'value': '0',
+        'value': '${allLetters.where((l) => l.status == "Draft").length}',
         'color': Colors.grey,
       },
     ];
@@ -258,12 +500,12 @@ class _BankLettersPageState extends State<BankLettersPage> {
   }
 
   Widget _buildStatCard(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required String value,
-    required Color color,
-  }) {
+      BuildContext context, {
+        required IconData icon,
+        required String label,
+        required String value,
+        required Color color,
+      }) {
     final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
 
@@ -361,13 +603,13 @@ class _BankLettersPageState extends State<BankLettersPage> {
               ),
               if (!isSmallScreen) ...[
                 OutlineButton(
-                  onPressed: () {},
+                  onPressed: _showFilterDialog,
                   icon: Icons.filter_list,
-                  label: 'Filter',
+                  label: statusFilter == null ? 'Filter' : 'Filter: $statusFilter',
                 ),
                 const SizedBox(width: 12),
                 OutlineButton(
-                  onPressed: () {},
+                  onPressed: _refreshData,
                   icon: Icons.refresh,
                   label: 'Refresh',
                 ),
@@ -383,154 +625,6 @@ class _BankLettersPageState extends State<BankLettersPage> {
           ),
           const SizedBox(height: 16),
 
-          // Controls Row
-          isSmallScreen
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          'Show',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: colorScheme.outline),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: DropdownButton<int>(
-                            value: rowsPerPage,
-                            underline: const SizedBox(),
-                            items: [10, 25, 50, 100].map((value) {
-                              return DropdownMenuItem<int>(
-                                value: value,
-                                child: Text('$value'),
-                              );
-                            }).toList(),
-                            onChanged: changeRowsPerPage,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'entries',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      onChanged: (value) {
-                        setState(() {
-                          searchQuery = value;
-                        });
-                      },
-                      decoration: InputDecoration(
-                        hintText: 'Search:',
-                        prefixIcon: const Icon(Icons.search, size: 20),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide(color: colorScheme.outline),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide(color: colorScheme.outline),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide(color: colorScheme.primary, width: 2),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 12,
-                        ),
-                        isDense: true,
-                      ),
-                    ),
-                  ],
-                )
-              : Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Show',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: colorScheme.outline),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: DropdownButton<int>(
-                            value: rowsPerPage,
-                            underline: const SizedBox(),
-                            items: [10, 25, 50, 100].map((value) {
-                              return DropdownMenuItem<int>(
-                                value: value,
-                                child: Text('$value'),
-                              );
-                            }).toList(),
-                            onChanged: changeRowsPerPage,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'entries',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(
-                      width: 250,
-                      child: TextField(
-                        onChanged: (value) {
-                          setState(() {
-                            searchQuery = value;
-                          });
-                        },
-                        decoration: InputDecoration(
-                          hintText: 'Search:',
-                          prefixIcon: const Icon(Icons.search, size: 20),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: colorScheme.outline),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: colorScheme.outline),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: colorScheme.primary, width: 2),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 12,
-                          ),
-                          isDense: true,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-          const SizedBox(height: 16),
-
-          // Table
           CustomTable(
             columns: [
               DataColumn(
@@ -606,42 +700,57 @@ class _BankLettersPageState extends State<BankLettersPage> {
                 ),
               ),
             ],
-            rows: letters.isEmpty
+            rows: paginatedLetters.isEmpty
                 ? []
-                : letters.map((letter) {
-                    return DataRow(
-                      cells: [
-                        DataCell(Text(letter['id'].toString())),
-                        DataCell(Text(letter['reference'] ?? '')),
-                        DataCell(Text(letter['type'] ?? '')),
-                        DataCell(Text(letter['subject'] ?? '')),
-                        DataCell(Text(letter['bank'] ?? '')),
-                        DataCell(Text(letter['status'] ?? '')),
-                        DataCell(Text(letter['createdBy'] ?? '')),
-                        DataCell(
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.visibility, size: 18),
-                                onPressed: () {},
-                                tooltip: 'View',
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.edit, size: 18),
-                                onPressed: () {},
-                                tooltip: 'Edit',
-                              ),
-                            ],
-                          ),
+                : paginatedLetters.asMap().entries.map((entry) {
+              final index = entry.key;
+              final letter = entry.value;
+              return DataRow(
+                cells: [
+                  DataCell(Text('${currentPage * rowsPerPage + index + 1}')),
+                  DataCell(Text(letter.reference)),
+                  DataCell(Text(letter.type)),
+                  DataCell(Text(letter.subject)),
+                  DataCell(Text(letter.bank)),
+                  DataCell(
+                    BadgeChip(
+                      label: letter.status,
+                      type: ChipType.status,
+                      statusKey: letter.status,
+                      statusColorFunc: _getStatusColor,
+                    ),
+                  ),
+                  DataCell(Text(letter.createdBy)),
+                  DataCell(
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.visibility, size: 18),
+                          onPressed: () => onViewLetter(letter),
+                          tooltip: 'View',
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.edit, size: 18),
+                          onPressed: () => onEditLetter(letter),
+                          tooltip: 'Edit',
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete, size: 18),
+                          onPressed: () => deleteLetter(letter),
+                          tooltip: 'Delete',
+                          color: Theme.of(context).colorScheme.error,
                         ),
                       ],
-                    );
-                  }).toList(),
+                    ),
+                  ),
+                ],
+              );
+            }).toList(),
             minTableWidth: 1200,
           ),
-          
-          if (letters.isEmpty) ...[
+
+          if (paginatedLetters.isEmpty) ...[
             const SizedBox(height: 40),
             Center(
               child: Column(
@@ -664,81 +773,18 @@ class _BankLettersPageState extends State<BankLettersPage> {
             const SizedBox(height: 40),
           ],
 
-          if (letters.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            // Pagination
-            isSmallScreen
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        'Showing ${currentPage * rowsPerPage + 1} to ${((currentPage + 1) * rowsPerPage).clamp(0, letters.length)} of ${letters.length} entries',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurface.withValues(alpha: 0.7),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _buildPaginationControls(context, colorScheme),
-                    ],
-                  )
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Showing ${currentPage * rowsPerPage + 1} to ${((currentPage + 1) * rowsPerPage).clamp(0, letters.length)} of ${letters.length} entries',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurface.withValues(alpha: 0.7),
-                        ),
-                      ),
-                      _buildPaginationControls(context, colorScheme),
-                    ],
-                  ),
+          if (filteredLetters.isNotEmpty) ...[
+            CustomPaginationBar(
+              totalItems: filteredLetters.length,
+              currentPage: currentPage,
+              rowsPerPage: rowsPerPage,
+              onPageChanged: gotoPage,
+              onRowsPerPageChanged: changeRowsPerPage,
+              availableRowsPerPage: const [5, 10, 20, 50],
+            ),
           ],
         ],
       ),
-    );
-  }
-
-  Widget _buildPaginationControls(BuildContext context, ColorScheme colorScheme) {
-    final totalPages = (letters.length / rowsPerPage).ceil();
-    final theme = Theme.of(context);
-    
-    // Generate page numbers to display (max 3 pages)
-    List<int> pageNumbers = [];
-    if (totalPages <= 3) {
-      pageNumbers = List.generate(totalPages, (index) => index);
-    } else {
-      if (currentPage == 0) {
-        pageNumbers = [0, 1, 2];
-      } else if (currentPage == totalPages - 1) {
-        pageNumbers = [totalPages - 3, totalPages - 2, totalPages - 1];
-      } else {
-        pageNumbers = [currentPage - 1, currentPage, currentPage + 1];
-      }
-    }
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      alignment: WrapAlignment.end,
-      children: [
-        OutlinedButton(
-          onPressed: currentPage > 0 ? () => gotoPage(currentPage - 1) : null,
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            side: BorderSide(color: colorScheme.outline),
-          ),
-          child: const Text('Previous'),
-        ),
-        OutlinedButton(
-          onPressed: currentPage < totalPages - 1 ? () => gotoPage(currentPage + 1) : null,
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            side: BorderSide(color: colorScheme.outline),
-          ),
-          child: const Text('Next'),
-        ),
-      ],
     );
   }
 }

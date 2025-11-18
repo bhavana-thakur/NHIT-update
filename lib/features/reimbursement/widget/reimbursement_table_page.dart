@@ -200,7 +200,7 @@ class _ReimbursementTablePageState extends State<ReimbursementTablePage> {
                       _buildInputField(ctx, "Date", dateController),
                       const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
-                        value: statusValue,
+                        initialValue: statusValue,
                         decoration: InputDecoration(
                           labelText: "Status",
                           labelStyle: TextStyle(color: colorScheme.onSurface),
@@ -336,7 +336,7 @@ class _ReimbursementTablePageState extends State<ReimbursementTablePage> {
                       _buildInputField(ctx, "Date", dateController),
                       const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
-                        value: statusValue,
+                        initialValue: statusValue,
                         decoration: InputDecoration(
                           labelText: "Status",
                           labelStyle: TextStyle(color: colorScheme.onSurface),
@@ -578,7 +578,6 @@ class _ReimbursementTablePageState extends State<ReimbursementTablePage> {
       DataColumn(label: Text('Amount', style: TextStyle(color: cs.onSurface))),
       DataColumn(label: Text('Date', style: TextStyle(color: cs.onSurface))),
       DataColumn(label: Text('Status', style: TextStyle(color: cs.onSurface))),
-      DataColumn(label: Text('Extra Info', style: TextStyle(color: cs.onSurface))),
       DataColumn(label: Text('Actions', style: TextStyle(color: cs.onSurface))),
     ];
 
@@ -591,7 +590,6 @@ class _ReimbursementTablePageState extends State<ReimbursementTablePage> {
           _buildCell("₹${note.amount}"),
           _buildCell(note.date),
           DataCell(_statusBadge(context, note.status)),
-          DataCell(_buildExtraInfo(note)),
           DataCell(
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -667,7 +665,7 @@ class _ReimbursementTablePageState extends State<ReimbursementTablePage> {
                             Text(
                               'Manage your reimbursement notes',
                               style: TextStyle(
-                                color: cs.onSurface.withOpacity(0.6),
+                                color: cs.onSurface.withValues(alpha: 0.6),
                                 fontSize: 16,
                               ),
                             ),
