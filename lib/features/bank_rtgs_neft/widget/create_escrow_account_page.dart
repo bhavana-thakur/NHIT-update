@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:ppv_components/common_widgets/button/primary_button.dart';
 import 'package:ppv_components/common_widgets/button/secondary_button.dart';
 
@@ -184,8 +185,9 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
           SecondaryButton(
             label: 'Back to Accounts',
             icon: Icons.arrow_back,
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => GoRouter.of(context).go('/escrow-accounts'),
           ),
+
         ],
       ),
     );
