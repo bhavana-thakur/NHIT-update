@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/models/bank_models/escrow_account_model.dart';
 import 'package:ppv_components/common_widgets/custom_table.dart';
 import 'package:ppv_components/common_widgets/pagination.dart';
@@ -324,12 +325,7 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
           const SizedBox(width: 16),
           ElevatedButton.icon(
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const CreateEscrowAccountPage(),
-                ),
-              );
+              GoRouter.of(context).go('/escrow-accounts/create');
             },
             icon: const Icon(Icons.add, size: 18),
             label: const Text('Add Account'),
@@ -345,6 +341,7 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
               ),
             ),
           ),
+
           const SizedBox(width: 12),
           OutlinedButton.icon(
             onPressed: () {

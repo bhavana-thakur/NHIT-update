@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ppv_components/common_widgets/button/primary_button.dart';
 import 'package:ppv_components/common_widgets/button/secondary_button.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/services/escrow_service.dart';
 
 class CreateEscrowAccountPage extends StatefulWidget {
   const CreateEscrowAccountPage({super.key});
@@ -23,6 +24,7 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
 
   String? selectedAccountType;
   List<String> signatories = [''];
+  List<TextEditingController> signatoryControllers = [TextEditingController()];
 
   final List<String> accountTypes = [
     'Current Account',
@@ -33,6 +35,9 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
 
   double _initialBalance = 0.00;
   final double step = 0.01;
+  bool _isLoading = false;
+  
+  final EscrowService _escrowService = EscrowService();
 
   @override
   void initState() {
@@ -49,12 +54,16 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
     _ifscCodeController.dispose();
     _initialBalanceController.dispose();
     _descriptionController.dispose();
+    for (final controller in signatoryControllers) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
   void _addSignatory() {
     setState(() {
       signatories.add('');
+      signatoryControllers.add(TextEditingController());
     });
   }
 
@@ -62,20 +71,118 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
     if (signatories.length > 1) {
       setState(() {
         signatories.removeAt(index);
+        signatoryControllers[index].dispose();
+        signatoryControllers.removeAt(index);
       });
     }
   }
 
-  void _createAccount() {
+  Future<void> _createAccount() async {
     if (_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Escrow account created successfully!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      Navigator.pop(context);
+      setState(() {
+        _isLoading = true;
+      });
+
+      try {
+        // Collect signatory names from controllers
+        final signatoryNames = signatoryControllers
+            .map((controller) => controller.text.trim())
+            .where((name) => name.isNotEmpty)
+            .toList();
+
+        // Call API to create escrow account
+        final success = await _escrowService.createEscrowAccount(
+          accountName: _accountNameController.text.trim(),
+          accountNumber: _accountNumberController.text.trim(),
+          bankName: _bankNameController.text.trim(),
+          branchName: _branchNameController.text.trim(),
+          ifscCode: _ifscCodeController.text.trim(),
+          accountType: selectedAccountType ?? '',
+          initialBalance: _initialBalance,
+          description: _descriptionController.text.trim(),
+          signatories: signatoryNames,
+        );
+
+        if (success) {
+          // Show success snackbar
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Escrow account created successfully'),
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+
+          // Reset form to blank
+          _resetForm();
+
+          // Refresh the escrow accounts list by triggering a router refresh
+          if (mounted) {
+            // Navigate back to list and then return to trigger refresh
+            GoRouter.of(context).go('/escrow-accounts');
+          }
+        } else {
+          // Show error snackbar
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Failed to create escrow account. Please try again.'),
+                backgroundColor: Theme.of(context).colorScheme.error,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        // Show error snackbar
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: ${e.toString()}'),
+              backgroundColor: Theme.of(context).colorScheme.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
     }
+  }
+
+  void _resetForm() {
+    // Reset all text controllers
+    _accountNameController.clear();
+    _accountNumberController.clear();
+    _bankNameController.clear();
+    _branchNameController.clear();
+    _ifscCodeController.clear();
+    _descriptionController.clear();
+    
+    // Reset signatories
+    for (final controller in signatoryControllers) {
+      controller.dispose();
+    }
+    signatoryControllers.clear();
+    signatoryControllers.add(TextEditingController());
+    
+    // Reset other form fields
+    setState(() {
+      selectedAccountType = null;
+      signatories = [''];
+      _initialBalance = 0.00;
+      _initialBalanceController.text = _initialBalance.toStringAsFixed(2);
+    });
+
+    // Reset form validation
+    _formKey.currentState?.reset();
   }
 
   void _updateBalance(double newValue) {
@@ -410,6 +517,7 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
                       children: [
                         Expanded(
                           child: TextFormField(
+                            controller: signatoryControllers[index],
                             decoration: InputDecoration(
                               hintText: 'Enter signatory name',
                               hintStyle: TextStyle(
@@ -434,6 +542,12 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
                                 vertical: 14,
                               ),
                             ),
+                            validator: (value) {
+                              if (index == 0 && (value == null || value.trim().isEmpty)) {
+                                return 'At least one signatory is required';
+                              }
+                              return null;
+                            },
                           ),
                         ),
                         if (signatories.length > 1) ...[
@@ -474,9 +588,10 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
               ),
               const SizedBox(width: 12),
               PrimaryButton(
-                onPressed: _createAccount,
-                icon: Icons.check,
-                label: 'Create Account',
+                onPressed: _isLoading ? null : _createAccount,
+                icon: _isLoading ? null : Icons.check,
+                label: _isLoading ? 'Creating...' : 'Create Account',
+                isLoading: _isLoading,
               ),
             ],
           ),
@@ -515,7 +630,7 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
                   controller: _initialBalanceController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
                   ],
                   decoration: const InputDecoration(
                     border: InputBorder.none,
