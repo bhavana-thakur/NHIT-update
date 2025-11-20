@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:ppv_components/features/bank_rtgs_neft/models/escrow_account_response.dart' show EscrowAccountData;
+import 'package:ppv_components/features/bank_rtgs_neft/models/escrow_account_response.dart' show EscrowAccount;
 import 'package:ppv_components/common_widgets/button/primary_button.dart';
 import 'package:ppv_components/common_widgets/button/secondary_button.dart';
 
 class EditEscrowAccountContent extends StatefulWidget {
-  final EscrowAccountData account;
-  final Function(EscrowAccountData) onSave;
+  final EscrowAccount account;
+  final Function(EscrowAccount) onSave;
   final VoidCallback onCancel;
 
   const EditEscrowAccountContent({
@@ -27,28 +27,18 @@ class _EditEscrowAccountContentState extends State<EditEscrowAccountContent> {
   late TextEditingController _typeController;
   late TextEditingController _balanceController;
   late String _selectedStatus;
-  String? _selectedAccountType;
-  final List<String> _accountTypeOptions = ['Savings Account', 'Current Account'];
 
-  // Use lowercase values to match backend (e.g. "active", "inactive"),
-  // and format them for display in the dropdown.
-  final List<String> _statusOptions = ['active', 'inactive'];
+  final List<String> _statusOptions = ['Active', 'Inactive'];
 
   @override
   void initState() {
     super.initState();
     _accountNameController = TextEditingController(text: widget.account.accountName);
     _accountNumberController = TextEditingController(text: widget.account.accountNumber);
-    _bankController = TextEditingController(text: widget.account.bankName);
-    _typeController = TextEditingController(text: widget.account.accountType);
-    _balanceController = TextEditingController(text: widget.account.balance.toString());
-    _selectedAccountType = _mapAccountTypeFromApi(widget.account.accountType);
-    // Normalise incoming status from backend to lowercase and
-    // fall back to the first option if it's unexpected.
-    final backendStatus = widget.account.status.toLowerCase();
-    _selectedStatus = _statusOptions.contains(backendStatus)
-        ? backendStatus
-        : _statusOptions.first;
+    _bankController = TextEditingController(text: widget.account.bank);
+    _typeController = TextEditingController(text: widget.account.type);
+    _balanceController = TextEditingController(text: widget.account.balance);
+    _selectedStatus = widget.account.status;
   }
 
   @override
@@ -63,23 +53,13 @@ class _EditEscrowAccountContentState extends State<EditEscrowAccountContent> {
 
   void _saveAccount() {
     if (_formKey.currentState?.validate() ?? false) {
-      final updatedAccount = EscrowAccountData(
-        accountId: widget.account.accountId,
+      final updatedAccount = widget.account.copyWith(
         accountName: _accountNameController.text,
         accountNumber: _accountNumberController.text,
-        bankName: _bankController.text,
-        branchName: widget.account.branchName,
-        ifscCode: widget.account.ifscCode,
-        balance: double.tryParse(_balanceController.text) ?? widget.account.balance,
-        availableBalance: widget.account.availableBalance,
-        accountType: _mapAccountTypeToApi(_selectedAccountType ?? widget.account.accountType),
+        bank: _bankController.text,
+        type: _typeController.text,
         status: _selectedStatus,
-        description: widget.account.description,
-        authorizedSignatories: widget.account.authorizedSignatories,
-        createdById: widget.account.createdById,
-        organizationId: widget.account.organizationId,
-        createdAt: widget.account.createdAt,
-        updatedAt: DateTime.now(),
+        balance: _balanceController.text,
       );
       widget.onSave(updatedAccount);
     }
@@ -224,7 +204,7 @@ class _EditEscrowAccountContentState extends State<EditEscrowAccountContent> {
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: _buildAccountTypeDropdown(theme),
+                child: _buildInputField("Type", _typeController, theme),
               ),
             ],
           ),
@@ -302,84 +282,6 @@ class _EditEscrowAccountContentState extends State<EditEscrowAccountContent> {
     );
   }
 
-  Widget _buildAccountTypeDropdown(ThemeData theme) {
-    final colorScheme = theme.colorScheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Type',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w500,
-            color: colorScheme.onSurface,
-          ),
-        ),
-        const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          value: _selectedAccountType,
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: colorScheme.surface,
-            enabledBorder: OutlineInputBorder(
-              borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
-            ),
-          ),
-          items: _accountTypeOptions.map((type) {
-            return DropdownMenuItem<String>(
-              value: type,
-              child: Text(type),
-            );
-          }).toList(),
-          onChanged: (value) {
-            if (value != null) {
-              setState(() {
-                _selectedAccountType = value;
-              });
-            }
-          },
-          validator: (val) {
-            if (val == null || val.isEmpty) {
-              return 'Please select Type';
-            }
-            return null;
-          },
-        ),
-      ],
-    );
-  }
-
-  String _mapAccountTypeFromApi(String apiType) {
-    switch (apiType.toUpperCase()) {
-      case 'SAVINGS':
-        return 'Savings Account';
-      case 'CURRENT':
-        return 'Current Account';
-      default:
-        return 'Current Account';
-    }
-  }
-
-  String _mapAccountTypeToApi(String value) {
-    switch (value) {
-      case 'Savings Account':
-        return 'SAVINGS';
-      case 'Current Account':
-        return 'CURRENT';
-      default:
-        return value.toUpperCase();
-    }
-  }
-
   Widget _buildStatusDropdown(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -411,11 +313,9 @@ class _EditEscrowAccountContentState extends State<EditEscrowAccountContent> {
             ),
           ),
           items: _statusOptions.map((status) {
-            // Capitalize for display while keeping the value lowercase.
-            final label = status[0].toUpperCase() + status.substring(1).toLowerCase();
             return DropdownMenuItem<String>(
               value: status,
-              child: Text(label),
+              child: Text(status),
             );
           }).toList(),
           onChanged: (value) {

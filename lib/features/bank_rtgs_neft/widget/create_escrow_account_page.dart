@@ -3,10 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ppv_components/common_widgets/button/primary_button.dart';
 import 'package:ppv_components/common_widgets/button/secondary_button.dart';
-import 'package:ppv_components/features/bank_rtgs_neft/services/escrow_service.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/controllers/escrow_account_controller.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/models/escrow_account_response.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/services/api_client.dart';
 
 class CreateEscrowAccountPage extends StatefulWidget {
-  const CreateEscrowAccountPage({super.key});
+  final String? accountId; // For update mode
+  
+  const CreateEscrowAccountPage({super.key, this.accountId});
 
   @override
   State<CreateEscrowAccountPage> createState() => _CreateEscrowAccountPageState();
@@ -27,22 +31,118 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
   List<TextEditingController> signatoryControllers = [TextEditingController()];
 
   final List<String> accountTypes = [
-    'Current Account',
     'Savings Account',
-    'Fixed Deposit',
-    'Overdraft',
+    'Current Account',
   ];
 
   double _initialBalance = 0.00;
-  final double step = 0.01;
   bool _isLoading = false;
-  
-  final EscrowService _escrowService = EscrowService();
+  bool _isUpdateMode = false;
+  EscrowAccountData? _existingAccount;
+
+  final EscrowAccountController _controller = EscrowAccountController();
 
   @override
   void initState() {
     super.initState();
     _initialBalanceController.text = _initialBalance.toStringAsFixed(2);
+    
+    // Initialize API client
+    ApiClient().initialize();
+    
+    // Check if in update mode
+    if (widget.accountId != null) {
+      _isUpdateMode = true;
+      _loadExistingAccount();
+    }
+  }
+
+  Future<void> _loadExistingAccount() async {
+    if (widget.accountId == null) return;
+    
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final account = await _controller.getEscrowAccount(widget.accountId!);
+      if (account != null && mounted) {
+        _existingAccount = account;
+        _populateFormWithExistingData(account);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading account: ${_controller.getErrorMessage(e)}'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _populateFormWithExistingData(EscrowAccountData account) {
+    _accountNameController.text = account.accountName;
+    _accountNumberController.text = account.accountNumber;
+    _bankNameController.text = account.bankName;
+    _branchNameController.text = account.branchName;
+    _ifscCodeController.text = account.ifscCode;
+    _descriptionController.text = account.description;
+    
+    // Set account type
+    selectedAccountType = _mapAccountTypeFromApi(account.accountType);
+    
+    // Set balance (keep as read-only in update mode)
+    _initialBalance = account.balance;
+    _initialBalanceController.text = _initialBalance.toStringAsFixed(2);
+    
+    // Set signatories
+    signatories.clear();
+    signatoryControllers.forEach((controller) => controller.dispose());
+    signatoryControllers.clear();
+    
+    for (int i = 0; i < account.authorizedSignatories.length; i++) {
+      signatories.add(account.authorizedSignatories[i]);
+      final controller = TextEditingController(text: account.authorizedSignatories[i]);
+      signatoryControllers.add(controller);
+    }
+    
+    // Ensure at least one signatory field
+    if (signatories.isEmpty) {
+      signatories.add('');
+      signatoryControllers.add(TextEditingController());
+    }
+    
+    setState(() {});
+  }
+
+  String _mapAccountTypeFromApi(String apiType) {
+    switch (apiType.toUpperCase()) {
+      case 'SAVINGS':
+        return 'Savings Account';
+      case 'CURRENT':
+        return 'Current Account';
+      default:
+        return 'Savings Account'; // Default to Savings Account as per backend enum
+    }
+  }
+
+  String _mapAccountTypeToApi(String uiType) {
+    switch (uiType) {
+      case 'Savings Account':
+        return 'SAVINGS';
+      case 'Current Account':
+        return 'CURRENT';
+      default:
+        return 'SAVINGS'; // Default to SAVINGS as per backend enum
+    }
   }
 
   @override
@@ -90,25 +190,46 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
             .where((name) => name.isNotEmpty)
             .toList();
 
-        // Call API to create escrow account
-        final success = await _escrowService.createEscrowAccount(
-          accountName: _accountNameController.text.trim(),
-          accountNumber: _accountNumberController.text.trim(),
-          bankName: _bankNameController.text.trim(),
-          branchName: _branchNameController.text.trim(),
-          ifscCode: _ifscCodeController.text.trim(),
-          accountType: selectedAccountType ?? '',
-          initialBalance: _initialBalance,
-          description: _descriptionController.text.trim(),
-          signatories: signatoryNames,
-        );
+        bool success;
+        String successMessage;
+        
+        if (_isUpdateMode && widget.accountId != null) {
+          // Update existing account
+          success = await _controller.updateEscrowAccount(
+            accountId: widget.accountId!,
+            accountName: _accountNameController.text.trim(),
+            accountNumber: _accountNumberController.text.trim(),
+            bankName: _bankNameController.text.trim(),
+            branchName: _branchNameController.text.trim(),
+            ifscCode: _ifscCodeController.text.trim(),
+            accountType: _mapAccountTypeToApi(selectedAccountType ?? 'Savings Account'),
+            description: _descriptionController.text.trim(),
+            authorizedSignatories: signatoryNames,
+            status: _existingAccount?.status ?? 'active',
+          );
+          successMessage = 'Escrow account updated successfully';
+        } else {
+          // Create new account
+          success = await _controller.createEscrowAccount(
+            accountName: _accountNameController.text.trim(),
+            accountNumber: _accountNumberController.text.trim(),
+            bankName: _bankNameController.text.trim(),
+            branchName: _branchNameController.text.trim(),
+            ifscCode: _ifscCodeController.text.trim(),
+            accountType: _mapAccountTypeToApi(selectedAccountType ?? 'Savings Account'),
+            balance: _initialBalance,
+            description: _descriptionController.text.trim(),
+            authorizedSignatories: signatoryNames,
+          );
+          successMessage = 'Escrow account created successfully';
+        }
 
         if (success) {
           // Show success snackbar
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: const Text('Escrow account created successfully'),
+                content: Text(successMessage),
                 backgroundColor: Theme.of(context).colorScheme.primary,
                 behavior: SnackBarBehavior.floating,
                 duration: const Duration(seconds: 3),
@@ -116,12 +237,13 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
             );
           }
 
-          // Reset form to blank
-          _resetForm();
+          if (!_isUpdateMode) {
+            // Reset form to blank only for create mode
+            _resetForm();
+          }
 
-          // Refresh the escrow accounts list by triggering a router refresh
+          // Navigate back to list
           if (mounted) {
-            // Navigate back to list and then return to trigger refresh
             GoRouter.of(context).go('/escrow-accounts');
           }
         } else {
@@ -129,7 +251,9 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: const Text('Failed to create escrow account. Please try again.'),
+                content: Text(_isUpdateMode 
+                    ? 'Failed to update escrow account. Please try again.' 
+                    : 'Failed to create escrow account. Please try again.'),
                 backgroundColor: Theme.of(context).colorScheme.error,
                 behavior: SnackBarBehavior.floating,
               ),
@@ -141,7 +265,7 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error: ${e.toString()}'),
+              content: Text('Error: ${_controller.getErrorMessage(e)}'),
               backgroundColor: Theme.of(context).colorScheme.error,
               behavior: SnackBarBehavior.floating,
             ),
@@ -158,60 +282,36 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
   }
 
   void _resetForm() {
-    // Reset all text controllers
     _accountNameController.clear();
     _accountNumberController.clear();
     _bankNameController.clear();
     _branchNameController.clear();
     _ifscCodeController.clear();
     _descriptionController.clear();
-    
-    // Reset signatories
     for (final controller in signatoryControllers) {
       controller.dispose();
     }
     signatoryControllers.clear();
     signatoryControllers.add(TextEditingController());
-    
-    // Reset other form fields
+
     setState(() {
       selectedAccountType = null;
       signatories = [''];
       _initialBalance = 0.00;
       _initialBalanceController.text = _initialBalance.toStringAsFixed(2);
     });
-
-    // Reset form validation
     _formKey.currentState?.reset();
-  }
-
-  void _updateBalance(double newValue) {
-    final value = newValue < 0 ? 0.0 : newValue;
-    setState(() {
-      _initialBalance = double.parse(value.toStringAsFixed(2));
-      _initialBalanceController.text = _initialBalance.toStringAsFixed(2);
-    });
-  }
-
-  void _incrementBalance() {
-    _updateBalance(_initialBalance + step);
-  }
-
-  void _decrementBalance() {
-    if (_initialBalance - step >= 0) {
-      _updateBalance(_initialBalance - step);
-    } else {
-      _updateBalance(0.0);
-    }
   }
 
   void _onBalanceTextChanged(String text) {
     final parsed = double.tryParse(text.replaceAll(',', ''));
     if (parsed != null) {
-      _updateBalance(parsed);
+      setState(() {
+        _initialBalance = parsed;
+      });
     } else if (text.isEmpty) {
       setState(() {
-        _initialBalanceController.text = '';
+        _initialBalance = 0.0;
       });
     }
   }
@@ -248,7 +348,7 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
         color: colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: colorScheme.outline.withValues(alpha: 0.5),
+          color: colorScheme.outline.withAlpha(128),
           width: 0.5,
         ),
       ),
@@ -257,7 +357,7 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: colorScheme.primary.withValues(alpha: 0.15),
+              color: colorScheme.primary.withAlpha(38),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
@@ -272,7 +372,7 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Create Escrow Account',
+                  _isUpdateMode ? 'Update Escrow Account' : 'Create Escrow Account',
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: colorScheme.onSurface,
@@ -280,9 +380,11 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Add a new escrow account to your inventory',
+                  _isUpdateMode 
+                      ? 'Update the details of your escrow account'
+                      : 'Add a new escrow account to your inventory',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurface.withValues(alpha: 0.6),
+                    color: colorScheme.onSurface.withAlpha(153),
                   ),
                 ),
               ],
@@ -294,7 +396,6 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
             icon: Icons.arrow_back,
             onPressed: () => GoRouter.of(context).go('/escrow-accounts'),
           ),
-
         ],
       ),
     );
@@ -309,14 +410,13 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Account Details Section
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               color: colorScheme.surfaceContainer,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: colorScheme.outline.withValues(alpha: 0.5),
+                color: colorScheme.outline.withAlpha(128),
                 width: 0.5,
               ),
             ),
@@ -460,7 +560,7 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
                 Row(
                   children: [
                     Expanded(
-                      child: _buildBalanceField(),
+                      child: _buildInitialBalanceField(),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -478,14 +578,13 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
           ),
           const SizedBox(height: 16),
 
-          // Authorized Signatories Section
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               color: colorScheme.surfaceContainer,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: colorScheme.outline.withValues(alpha: 0.5),
+                color: colorScheme.outline.withAlpha(128),
                 width: 0.5,
               ),
             ),
@@ -521,17 +620,17 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
                             decoration: InputDecoration(
                               hintText: 'Enter signatory name',
                               hintStyle: TextStyle(
-                                color: colorScheme.onSurface.withValues(alpha: 0.5),
+                                color: colorScheme.onSurface.withAlpha(128),
                               ),
                               filled: true,
                               fillColor: colorScheme.surface,
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
+                                borderSide: BorderSide(color: colorScheme.outline.withAlpha(128)),
                               ),
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
+                                borderSide: BorderSide(color: colorScheme.outline.withAlpha(128)),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
@@ -557,7 +656,7 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
                             icon: const Icon(Icons.delete_outline),
                             color: Colors.red,
                             style: IconButton.styleFrom(
-                              backgroundColor: Colors.red.withValues(alpha: 0.1),
+                              backgroundColor: Colors.red.withAlpha(25),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
@@ -578,7 +677,6 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
           ),
           const SizedBox(height: 24),
 
-          // Action Buttons
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
@@ -590,7 +688,9 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
               PrimaryButton(
                 onPressed: _isLoading ? null : _createAccount,
                 icon: _isLoading ? null : Icons.check,
-                label: _isLoading ? 'Creating...' : 'Create Account',
+                label: _isLoading 
+                    ? (_isUpdateMode ? 'Updating...' : 'Creating...') 
+                    : (_isUpdateMode ? 'Update Account' : 'Create Account'),
                 isLoading: _isLoading,
               ),
             ],
@@ -600,7 +700,7 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
     );
   }
 
-  Widget _buildBalanceField() {
+  Widget _buildInitialBalanceField() {
     final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
 
@@ -615,75 +715,53 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
           ),
         ),
         const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: colorScheme.outline.withValues(alpha: 0.5)),
-            borderRadius: BorderRadius.circular(8),
-            color: colorScheme.surface,
+        TextFormField(
+          controller: _initialBalanceController,
+          enabled: !_isUpdateMode, // Disable in update mode
+          readOnly: _isUpdateMode, // Make read-only in update mode
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+          ],
+          decoration: InputDecoration(
+            hintText: "0.00",
+            contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+            filled: true,
+            fillColor: _isUpdateMode 
+                ? colorScheme.onSurface.withAlpha(25) // Grayed out in update mode
+                : colorScheme.surface,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: colorScheme.outline.withAlpha(128)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: colorScheme.outline.withAlpha(128)),
+            ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: colorScheme.outline.withAlpha(64)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Colors.red),
+            ),
           ),
-          child: Row(
-            children: [
-              const SizedBox(width: 12),
-              const Text("₹ ", style: TextStyle(fontSize: 16)),
-              Expanded(
-                child: TextFormField(
-                  controller: _initialBalanceController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
-                  ],
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    hintText: "0.00",
-                    contentPadding: EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter initial balance';
-                    }
-                    final parsed = double.tryParse(value);
-                    if (parsed == null) return 'Invalid amount';
-                    return null;
-                  },
-                  onChanged: _onBalanceTextChanged,
-                ),
-              ),
-              Container(
-                width: 36,
-                height: 48,
-                decoration: BoxDecoration(
-                  border: Border(left: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5))),
-                ),
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        onTap: _incrementBalance,
-                        child: Container(
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            border: Border(
-                              bottom: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
-                            ),
-                          ),
-                          child: const Icon(Icons.keyboard_arrow_up, size: 18),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: InkWell(
-                        onTap: _decrementBalance,
-                        child: Container(
-                          alignment: Alignment.center,
-                          child: const Icon(Icons.keyboard_arrow_down, size: 18),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+          validator: (value) {
+            if (!_isUpdateMode && (value == null || value.isEmpty)) {
+              return 'Please enter initial balance';
+            }
+            if (!_isUpdateMode) {
+              final parsed = double.tryParse(value!);
+              if (parsed == null) return 'Invalid amount';
+            }
+            return null;
+          },
+          onChanged: _isUpdateMode ? null : _onBalanceTextChanged,
         ),
       ],
     );
@@ -727,17 +805,17 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
             hintText: hint,
             counterText: maxLength != null ? '' : null,
             hintStyle: TextStyle(
-              color: colorScheme.onSurface.withValues(alpha: 0.5),
+              color: colorScheme.onSurface.withAlpha(128),
             ),
             filled: true,
             fillColor: colorScheme.surface,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
+              borderSide: BorderSide(color: colorScheme.outline.withAlpha(128)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
+              borderSide: BorderSide(color: colorScheme.outline.withAlpha(128)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -784,7 +862,7 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
           hint: Text(
             hint,
             style: TextStyle(
-              color: colorScheme.onSurface.withValues(alpha: 0.5),
+              color: colorScheme.onSurface.withAlpha(128),
             ),
           ),
           items: items.map((item) {
@@ -807,11 +885,11 @@ class _CreateEscrowAccountPageState extends State<CreateEscrowAccountPage> {
             fillColor: colorScheme.surface,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
+              borderSide: BorderSide(color: colorScheme.outline.withAlpha(128)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
+              borderSide: BorderSide(color: colorScheme.outline.withAlpha(128)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),

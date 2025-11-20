@@ -279,12 +279,10 @@ import 'package:ppv_components/features/approval_management/screens/approval_rul
 import 'package:ppv_components/features/approval_management/screens/approval_rules_management_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/escrow_accounts_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/create_escrow_account_page.dart';
-import 'package:ppv_components/features/bank_rtgs_neft/models/bank_models/escrow_account_model.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/account_transfers_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/create_transfer_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/bank_letters_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/create_bank_letter_page.dart';
-import 'package:ppv_components/features/bank_rtgs_neft/services/escrow_service.dart';
 import 'package:ppv_components/features/expense/screens/all_notes_page.dart';
 import 'package:ppv_components/features/expense/screens/create_note_page.dart';
 import 'package:ppv_components/features/approval_management/screens/create_approval_rule_page.dart';
@@ -405,19 +403,7 @@ final GoRouter router = GoRouter(
         // Escrow Banking System
         GoRoute(
           path: '/escrow-accounts',
-          builder: (context, state) => FutureBuilder<List<EscrowAccount>>(
-            future: EscrowService().getAllEscrowAccounts(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Scaffold(
-                  body: Center(child: CircularProgressIndicator()),
-                );
-              }
-              return EscrowAccountsPage(
-                escrowAccounts: snapshot.data ?? [],
-              );
-            },
-          ),
+          builder: (context, state) => const EscrowAccountsPage(),
         ),
         GoRoute(
           path: '/escrow-accounts/create',

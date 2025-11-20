@@ -1,9 +1,10 @@
-
-
 import 'package:flutter/material.dart';
-import 'package:ppv_components/common_widgets/button/primary_button.dart';
 import 'package:ppv_components/common_widgets/button/secondary_button.dart';
 import 'package:ppv_components/common_widgets/custom_dropdown.dart';
+import '../controllers/bank_letter_controller.dart';
+import '../models/transfer_models/transfer_enums.dart';
+import '../models/transfer_models/transfer_model.dart';
+import '../models/transfer_models/transfer_leg.dart';
 
 class CreateTransferLetterForm extends StatefulWidget {
   final VoidCallback onCancel;
@@ -20,9 +21,84 @@ class CreateTransferLetterForm extends StatefulWidget {
 class _CreateTransferLetterFormState extends State<CreateTransferLetterForm> {
   final _formKey = GlobalKey<FormState>();
   String selectedStatus = 'Draft';
+  final Map<String, String> _statusMap = {
+    'Draft': 'LETTER_STATUS_DRAFT',
+    'Pending Approval': 'LETTER_STATUS_PENDING_APPROVAL',
+    'Approved': 'LETTER_STATUS_APPROVED',
+    'Sent': 'LETTER_STATUS_SENT',
+    'Acknowledged': 'LETTER_STATUS_ACKNOWLEDGED',
+  };
+  final BankLetterController _bankLetterController = BankLetterController();
+  bool _isSubmitting = false;
 
   // Form controllers
-  final _transferController = TextEditingController();
+  Transfer? selectedTransfer;
+  final List<Transfer> availableTransfers = [
+    Transfer(
+      transferId: '1',
+      transferReference: 'TR001',
+      transferType: TransferType.internal,
+      transferMode: TransferMode.oneToOne,
+      totalAmount: 10000.00,
+      purpose: 'Salary Transfer',
+      remarks: 'Monthly salary payment',
+      status: TransferStatus.approved,
+      requestedById: '123e4567-e89b-12d3-a456-426614174000',
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      transferLegs: [
+        TransferLeg(
+          id: '1-1',
+          transferId: '1',
+          sourceAccountId: 'ACC001',
+          destinationAccountId: 'ACC002',
+          amount: 10000.00,
+          sourceAccount: SimpleEscrowAccount(
+            id: 'ACC001',
+            accountNumber: '1234567890',
+            accountName: 'Main Account',
+          ),
+          destinationAccount: SimpleEscrowAccount(
+            id: 'ACC002',
+            accountNumber: '0987654321',
+            accountName: 'Salary Account',
+          ),
+        ),
+      ],
+    ),
+    Transfer(
+      transferId: '2',
+      transferReference: 'TR002',
+      transferType: TransferType.external,
+      transferMode: TransferMode.oneToMany,
+      totalAmount: 25000.00,
+      purpose: 'Vendor Payment',
+      remarks: 'Payment for services',
+      status: TransferStatus.completed,
+      requestedById: '123e4567-e89b-12d3-a456-426614174000',
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      transferLegs: [
+        TransferLeg(
+          id: '2-1',
+          transferId: '2',
+          sourceAccountId: 'ACC003',
+          destinationVendorId: 'VEN001',
+          amount: 25000.00,
+          sourceAccount: SimpleEscrowAccount(
+            id: 'ACC003',
+            accountNumber: '5555666677',
+            accountName: 'Project Account',
+          ),
+          destinationVendor: SimpleVendor(
+            id: 'VEN001',
+            name: 'ABC Suppliers',
+            code: 'ABC001',
+          ),
+        ),
+      ],
+    ),
+  ];
   final _bankNameController = TextEditingController();
   final _branchNameController = TextEditingController();
   final _bankAddressController = TextEditingController();
@@ -31,7 +107,6 @@ class _CreateTransferLetterFormState extends State<CreateTransferLetterForm> {
 
   @override
   void dispose() {
-    _transferController.dispose();
     _bankNameController.dispose();
     _branchNameController.dispose();
     _bankAddressController.dispose();
@@ -80,15 +155,78 @@ Yours faithfully,
     );
   }
 
-  void _createLetter() {
-    if (_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Creating Transfer Letter...'),
-          backgroundColor: Colors.green,
+  Future<void> _createLetter() async {
+    if (!_formKey.currentState!.validate() || selectedTransfer == null) {
+      return;
+    }
+
+    if (_isSubmitting) return;
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
+
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('Creating Transfer Letter...'),
+        backgroundColor: Colors.green,
+      ),
+    );
+
+    try {
+      final saveAsStatus = _statusMap[selectedStatus] ?? 'LETTER_STATUS_DRAFT';
+
+      final success = await _bankLetterController.createTransferLetter(
+        transferId: selectedTransfer!.transferId,
+        bankName: _bankNameController.text.trim(),
+        branchName: _branchNameController.text.trim(),
+        bankAddress: _bankAddressController.text.trim(),
+        subject: _subjectController.text.trim(),
+        content: _letterContentController.text.trim(),
+        saveAsStatus: saveAsStatus,
+      );
+
+      if (!mounted) return;
+
+      messenger.hideCurrentSnackBar();
+
+      if (success) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: const Text('Transfer letter created successfully'),
+            backgroundColor: theme.colorScheme.primary,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        messenger.showSnackBar(
+          SnackBar(
+            content: const Text('Failed to create transfer letter. Please try again.'),
+            backgroundColor: theme.colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Error: ${_bankLetterController.getErrorMessage(e)}'),
+          backgroundColor: theme.colorScheme.error,
+          behavior: SnackBarBehavior.floating,
         ),
       );
-      // Add your letter creation logic here
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
     }
   }
 
@@ -96,18 +234,24 @@ Yours faithfully,
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isSmallScreen = MediaQuery.of(context).size.width < 900;
-
     return Form(
       key: _formKey,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildTextField(
+          _buildDropdownField(
             label: 'Select Transfer',
-            hint: 'Select a transfer',
-            controller: _transferController,
+            value: selectedTransfer?.displayText ?? '',
+            items: availableTransfers.map((t) => t.displayText).toList(),
             isRequired: true,
-            helperText: 'Select an approved transfer to generate letter for',
+            onChanged: (value) {
+              setState(() {
+                selectedTransfer = availableTransfers.firstWhere(
+                  (t) => t.displayText == value,
+                  orElse: () => availableTransfers.first,
+                );
+              });
+            },
           ),
           const SizedBox(height: 16),
 
@@ -205,7 +349,13 @@ Yours faithfully,
           _buildDropdownField(
             label: 'Status',
             value: selectedStatus,
-            items: ['Draft', 'Submit for Approval'],
+            items: const [
+              'Draft',
+              'Pending Approval',
+              'Approved',
+              'Sent',
+              'Acknowledged',
+            ],
             isRequired: true,
             onChanged: (value) {
               setState(() {

@@ -1,9 +1,9 @@
 
 
 import 'package:flutter/material.dart';
-import 'package:ppv_components/common_widgets/button/primary_button.dart';
 import 'package:ppv_components/common_widgets/button/secondary_button.dart';
 import 'package:ppv_components/common_widgets/custom_dropdown.dart';
+import '../controllers/bank_letter_controller.dart';
 
 class CreateGeneralLetterForm extends StatefulWidget {
   final VoidCallback onCancel;
@@ -19,7 +19,17 @@ class CreateGeneralLetterForm extends StatefulWidget {
 
 class _CreateGeneralLetterFormState extends State<CreateGeneralLetterForm> {
   final _formKey = GlobalKey<FormState>();
+  final BankLetterController _bankLetterController = BankLetterController();
   String selectedStatus = 'Draft';
+  final Map<String, String> _statusMap = {
+    'Draft': 'LETTER_STATUS_DRAFT',
+    'Pending Approval': 'LETTER_STATUS_PENDING_APPROVAL',
+    'Approved': 'LETTER_STATUS_APPROVED',
+    'Sent': 'LETTER_STATUS_SENT',
+    'Acknowledged': 'LETTER_STATUS_ACKNOWLEDGED',
+  };
+
+  String get _backendStatus => _statusMap[selectedStatus] ?? 'LETTER_STATUS_DRAFT';
 
   // Form controllers
   final _bankNameController = TextEditingController();
@@ -73,15 +83,43 @@ Yours faithfully,
     );
   }
 
-  void _createLetter() {
-    if (_formKey.currentState!.validate()) {
+  Future<void> _createLetter() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Creating General Letter...'),
+        backgroundColor: Colors.green,
+      ),
+    );
+
+    try {
+      final success = await _bankLetterController.createGeneralLetter(
+        bankName: _bankNameController.text.trim(),
+        branchName: _branchNameController.text.trim(),
+        bankAddress: _bankAddressController.text.trim(),
+        subject: _subjectController.text.trim(),
+        content: _letterContentController.text.trim(),
+        saveAsStatus: _backendStatus,
+      );
+
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Creating General Letter...'),
-          backgroundColor: Colors.green,
+        SnackBar(
+          content: Text(success ? 'General letter created successfully' : 'Failed to create general letter'),
+          backgroundColor: success ? Colors.green : Colors.red,
         ),
       );
-      // Add your letter creation logic here
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -189,7 +227,13 @@ Yours faithfully,
           _buildDropdownField(
             label: 'Status',
             value: selectedStatus,
-            items: ['Draft', 'Submit for Approval'],
+            items: const [
+              'Draft',
+              'Pending Approval',
+              'Approved',
+              'Sent',
+              'Acknowledged',
+            ],
             isRequired: true,
             onChanged: (value) {
               setState(() {

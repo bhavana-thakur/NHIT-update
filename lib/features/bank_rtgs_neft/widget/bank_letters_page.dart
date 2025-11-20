@@ -413,7 +413,7 @@ class _BankLettersPageState extends State<BankLettersPage> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const EscrowAccountsPage(escrowAccounts: []),
+                      builder: (context) => const EscrowAccountsPage(),
                     ),
                   );
                 },

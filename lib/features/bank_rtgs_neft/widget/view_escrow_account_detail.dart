@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:ppv_components/features/bank_rtgs_neft/models/bank_models/escrow_account_model.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/models/escrow_account_response.dart' show EscrowAccountData;
 import 'package:ppv_components/common_widgets/button/secondary_button.dart';
 
 class ViewEscrowAccountDetail extends StatelessWidget {
-  final EscrowAccount account;
+  final EscrowAccountData account;
   final VoidCallback onClose;
 
   const ViewEscrowAccountDetail({
@@ -139,11 +139,11 @@ class ViewEscrowAccountDetail extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: _buildDetailField(context, "Bank", account.bank, theme),
+                child: _buildDetailField(context, "Bank", account.bankName, theme),
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: _buildDetailField(context, "Type", account.type, theme),
+                child: _buildDetailField(context, "Type", account.accountType, theme),
               ),
             ],
           ),
@@ -155,7 +155,7 @@ class ViewEscrowAccountDetail extends StatelessWidget {
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: _buildDetailField(context, "Balance", account.balance, theme),
+                child: _buildDetailField(context, "Balance", '₹${account.balance.toStringAsFixed(2).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}', theme),
               ),
             ],
           ),

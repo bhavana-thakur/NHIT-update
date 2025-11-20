@@ -481,7 +481,7 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const EscrowAccountsPage(escrowAccounts: []),
+                      builder: (context) => const EscrowAccountsPage(),
                     ),
                   );
                 },

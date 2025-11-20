@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:ppv_components/common_widgets/button/primary_button.dart';
 import 'package:ppv_components/common_widgets/button/outlined_button.dart';
 import 'package:ppv_components/common_widgets/custom_dropdown.dart';
+import '../models/transfer_models/transfer_enums.dart';
+import '../models/transfer_models/transfer_request.dart';
+import '../services/account_transfer_service.dart';
 
 class CreateTransferPage extends StatefulWidget {
   const CreateTransferPage({super.key});
@@ -12,8 +15,26 @@ class CreateTransferPage extends StatefulWidget {
 
 class _CreateTransferPageState extends State<CreateTransferPage> {
   final _formKey = GlobalKey<FormState>();
-  String? selectedTransferType;
-  String? selectedTransferMode;
+  final AccountTransferService _transferService = AccountTransferService();
+  bool _isSubmitting = false;
+
+  TransferType selectedTransferType = TransferType.internal;
+  TransferMode selectedTransferMode = TransferMode.oneToOne;
+
+  TransferMode _getModeFromString(String mode) {
+    switch (mode) {
+      case 'ONE_TO_ONE':
+        return TransferMode.oneToOne;
+      case 'ONE_TO_MANY':
+        return TransferMode.oneToMany;
+      case 'MANY_TO_ONE':
+        return TransferMode.manyToOne;
+      case 'MANY_TO_MANY':
+        return TransferMode.manyToMany;
+      default:
+        return TransferMode.oneToOne;
+    }
+  }
   String? hoveredTransferType;
   String? hoveredTransferMode;
 
@@ -27,7 +48,9 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
   String? selectedDestinationAccount;
   String? selectedVendor;
 
-  // Dynamic lists for multiple accounts
+  // Lists for multiple accounts/vendors
+  final List<TransferSourceInput> sources = [];
+  final List<TransferDestinationInput> destinations = [];
   List<Map<String, dynamic>> sourceAccounts = [];
   List<Map<String, dynamic>> destinationAccounts = [];
 
@@ -49,11 +72,18 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
   ];
 
   void _addSourceAccount() {
+    if (selectedSourceAccount == null || _transferAmountController.text.isEmpty) return;
+
+    final amount = double.tryParse(_transferAmountController.text);
+    if (amount == null || amount <= 0) return;
+
     setState(() {
-      sourceAccounts.add({
-        'account': null,
-        'amount': TextEditingController(text: '0.00'),
-      });
+      sources.add(TransferSourceInput(
+        sourceAccountId: selectedSourceAccount!,
+        amount: amount,
+      ));
+      selectedSourceAccount = null;
+      _transferAmountController.clear();
     });
   }
 
@@ -65,11 +95,26 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
   }
 
   void _addDestinationAccount() {
+    if (_transferAmountController.text.isEmpty) return;
+
+    final amount = double.tryParse(_transferAmountController.text);
+    if (amount == null || amount <= 0) return;
+
     setState(() {
-      destinationAccounts.add({
-        'account': null,
-        'amount': TextEditingController(text: '0.00'),
-      });
+      if (selectedTransferType == TransferType.internal && selectedDestinationAccount != null) {
+        destinations.add(TransferDestinationInput(
+          destinationAccountId: selectedDestinationAccount,
+          amount: amount,
+        ));
+        selectedDestinationAccount = null;
+      } else if (selectedTransferType == TransferType.external && selectedVendor != null) {
+        destinations.add(TransferDestinationInput(
+          destinationVendorId: selectedVendor,
+          amount: amount,
+        ));
+        selectedVendor = null;
+      }
+      _transferAmountController.clear();
     });
   }
 
@@ -163,6 +208,84 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
       'description': 'Multiple accounts to multiple accounts',
     },
   ];
+
+  void _onTransferTypeChanged(String? value) {
+    if (value == null) return;
+
+    final type = value == 'INTERNAL' ? TransferType.internal : TransferType.external;
+
+    setState(() {
+      selectedTransferType = type;
+      // Clear destinations when type changes
+      destinations.clear();
+      selectedDestinationAccount = null;
+      selectedVendor = null;
+    });
+  }
+
+  void _onTransferModeChanged(String? value) {
+    if (value == null) return;
+
+    final mode = _getModeFromString(value);
+
+    setState(() {
+      selectedTransferMode = mode;
+      // Clear lists when mode changes
+      sources.clear();
+      destinations.clear();
+      selectedSourceAccount = null;
+      selectedDestinationAccount = null;
+      selectedVendor = null;
+    });
+  }
+
+  Future<void> _handleSubmit() async {
+    if (!_formKey.currentState!.validate() || _isSubmitting) return;
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    try {
+      final request = CreateAccountTransferRequest(
+        transferType: selectedTransferType ?? TransferType.internal,
+        transferMode: selectedTransferMode ?? TransferMode.oneToOne,
+        purpose: _purposeController.text,
+        remarks: _remarksController.text,
+        requestedById: '123e4567-e89b-12d3-a456-426614174000', // TODO: Get from auth
+        sources: sources,
+        destinations: destinations,
+      );
+
+      final transfer = await _transferService.createTransfer(request);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Transfer created successfully: ${transfer.transferReference}'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // TODO: Navigate to transfer details or list
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -327,7 +450,11 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           ],
         ),
       ),
-      onChanged: (_) => setState(() {}),
+      onChanged: (value) {
+        setState(() {
+          // Add your logic here
+        });
+      },
     );
   }
 
@@ -545,7 +672,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                 ),
                 const SizedBox(height: 12),
                 PrimaryButton(
-                  onPressed: _createTransfer,
+                  onPressed: _handleSubmit,
                   icon: Icons.check_circle_outline,
                   label: 'Create Transfer',
                 ),
@@ -561,7 +688,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                 ),
                 const SizedBox(width: 12),
                 PrimaryButton(
-                  onPressed: _createTransfer,
+                  onPressed: _handleSubmit,
                   icon: Icons.check_circle_outline,
                   label: 'Create Transfer',
                 ),
@@ -580,7 +707,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // One to One Mode - Internal Transfer
-        if (selectedTransferMode == 'One to One' && selectedTransferType == 'Internal Transfer') ...[
+        if (selectedTransferMode == TransferMode.oneToOne && selectedTransferType == TransferType.internal) ...[
           _buildDropdownField(
             label: 'Source Account',
             value: selectedSourceAccount,
@@ -607,7 +734,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
         ],
 
         // One to Many Mode - Internal Transfer
-        if (selectedTransferMode == 'One to Many' && selectedTransferType == 'Internal Transfer') ...[
+        if (selectedTransferMode == TransferMode.oneToMany && selectedTransferType == TransferType.internal) ...[
           _buildDropdownField(
             label: 'Source Account',
             value: selectedSourceAccount,
@@ -718,7 +845,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
         ],
 
         // Many to Many Mode - Internal Transfer
-        if (selectedTransferMode == 'Many to Many' && selectedTransferType == 'Internal Transfer') ...[
+        if (selectedTransferMode == TransferMode.manyToMany && selectedTransferType == TransferType.internal) ...[
           Row(
             children: [
               Text(
@@ -913,7 +1040,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
         ],
 
         // One to One Mode - External Transfer
-        if (selectedTransferMode == 'One to One' && selectedTransferType == 'External Transfer') ...[
+        if (selectedTransferMode == TransferMode.oneToOne && selectedTransferType == TransferType.external) ...[
           _buildDropdownField(
             label: 'Source Account',
             value: selectedSourceAccount,
@@ -940,7 +1067,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
         ],
 
         // One to Many Mode - External Transfer
-        if (selectedTransferMode == 'One to Many' && selectedTransferType == 'External Transfer') ...[
+        if (selectedTransferMode == TransferMode.oneToMany && selectedTransferType == TransferType.external) ...[
           _buildDropdownField(
             label: 'Source Account',
             value: selectedSourceAccount,
@@ -1052,7 +1179,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
         ],
 
         // Many to Many Mode - External Transfer
-        if (selectedTransferMode == 'Many to Many' && selectedTransferType == 'External Transfer') ...[
+        if (selectedTransferMode == TransferMode.manyToMany && selectedTransferType == TransferType.external) ...[
           Row(
             children: [
               Text(
@@ -1428,7 +1555,8 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
       }) {
     final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
-    final isSelected = selectedTransferType == type;
+    final transferType = type == 'Internal Transfer' ? TransferType.internal : TransferType.external;
+    final isSelected = selectedTransferType == transferType;
     final isHovered = hoveredTransferType == type;
 
     return MouseRegion(
@@ -1445,8 +1573,8 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
       child: InkWell(
         onTap: () {
           setState(() {
-            selectedTransferType = type;
-            selectedTransferMode = null;
+            selectedTransferType = transferType;
+            selectedTransferMode = TransferMode.oneToOne;
             // Clear all dynamic lists
             sourceAccounts.clear();
             destinationAccounts.clear();
@@ -1515,7 +1643,9 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
       }) {
     final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
-    final isSelected = selectedTransferMode == mode;
+    final modeValue = mode.replaceAll(' to ', '_TO_').toUpperCase();
+    final transferMode = _getModeFromString(modeValue);
+    final isSelected = selectedTransferMode == transferMode;
     final isHovered = hoveredTransferMode == mode;
 
     return MouseRegion(
@@ -1532,7 +1662,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
       child: InkWell(
         onTap: () {
           setState(() {
-            selectedTransferMode = mode;
+            selectedTransferMode = transferMode;
             sourceAccounts.clear();
             destinationAccounts.clear();
             vendorRows.clear();
@@ -1593,36 +1723,5 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
         ),
       ),
     );
-  }
-
-  void _createTransfer() {
-    if (selectedTransferType == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select a transfer type'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (selectedTransferMode == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select a transfer mode'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Creating $selectedTransferType - $selectedTransferMode...'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
   }
 }
