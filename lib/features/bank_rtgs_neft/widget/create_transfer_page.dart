@@ -5,6 +5,10 @@ import 'package:ppv_components/common_widgets/custom_dropdown.dart';
 import '../models/transfer_models/transfer_enums.dart';
 import '../models/transfer_models/transfer_request.dart';
 import '../services/account_transfer_service.dart';
+import '../services/escrow_account_service.dart';
+import '../models/escrow_account_response.dart';
+import '../../vendor/models/vendor_model.dart';
+import '../../vendor/data/vendor_mockdb.dart';
 
 class CreateTransferPage extends StatefulWidget {
   const CreateTransferPage({super.key});
@@ -16,6 +20,7 @@ class CreateTransferPage extends StatefulWidget {
 class _CreateTransferPageState extends State<CreateTransferPage> {
   final _formKey = GlobalKey<FormState>();
   final AccountTransferService _transferService = AccountTransferService();
+  final EscrowAccountService _escrowService = EscrowAccountService();
   bool _isSubmitting = false;
 
   TransferType selectedTransferType = TransferType.internal;
@@ -43,10 +48,35 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
   final _purposeController = TextEditingController();
   final _remarksController = TextEditingController();
 
-  // Dropdown values
+  // Dropdown values for account/vendor fields
   String? selectedSourceAccount;
   String? selectedDestinationAccount;
   String? selectedVendor;
+  
+  // Data for dropdowns
+  List<EscrowAccountData> availableAccounts = [];
+  List<Vendor> availableVendors = [];
+  bool _isLoadingAccounts = false;
+  bool _isLoadingVendors = false;
+
+  // Helper getters for dropdown items
+  List<DropdownItem> get accountDropdownItems {
+    return availableAccounts
+        .map((account) => DropdownItem(
+              label: account.accountName,
+              value: account.accountId,
+            ))
+        .toList();
+  }
+
+  List<DropdownItem> get vendorDropdownItems {
+    return availableVendors
+        .map((vendor) => DropdownItem(
+              label: vendor.name,
+              value: vendor.code,
+            ))
+        .toList();
+  }
 
   // Lists for multiple accounts/vendors
   final List<TransferSourceInput> sources = [];
@@ -57,33 +87,72 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
   // Dynamic lists for External Transfer vendors
   List<Map<String, dynamic>> vendorRows = [];
 
-  // Mock account data - replace with actual data
-  final List<String> availableAccounts = [
-    'Main Account - ACC001',
-    'Savings Account - ACC002',
-    'Business Account - ACC003',
-    'Project Account - ACC004',
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadAccounts();
+    _loadVendors();
+  }
 
-  final List<String> availableVendors = [
-    'Vendor A - VEN001',
-    'Vendor B - VEN002',
-    'Vendor C - VEN003',
-  ];
-
-  void _addSourceAccount() {
-    if (selectedSourceAccount == null || _transferAmountController.text.isEmpty) return;
-
-    final amount = double.tryParse(_transferAmountController.text);
-    if (amount == null || amount <= 0) return;
-
+  Future<void> _loadAccounts() async {
     setState(() {
-      sources.add(TransferSourceInput(
-        sourceAccountId: selectedSourceAccount!,
-        amount: amount,
-      ));
-      selectedSourceAccount = null;
-      _transferAmountController.clear();
+      _isLoadingAccounts = true;
+    });
+    
+    try {
+      final accounts = await _escrowService.listEscrowAccounts(pageSize: 100);
+      setState(() {
+        availableAccounts = accounts;
+        _isLoadingAccounts = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingAccounts = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load accounts: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadVendors() async {
+    setState(() {
+      _isLoadingVendors = true;
+    });
+    
+    try {
+      // For now, use mock data. Replace with API call when vendor service is available
+      await Future.delayed(Duration(milliseconds: 500)); // Simulate API call
+      setState(() {
+        availableVendors = vendorData.where((v) => v.status == 'Approved').toList();
+        _isLoadingVendors = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingVendors = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load vendors: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _addRawSourceEntry() {
+    setState(() {
+      sourceAccounts.add({
+        'account': null,
+        'amount': TextEditingController(text: '0.00'),
+      });
     });
   }
 
@@ -94,28 +163,22 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
     });
   }
 
-  void _addDestinationAccount() {
-    if (_transferAmountController.text.isEmpty) return;
-
-    final amount = double.tryParse(_transferAmountController.text);
-    if (amount == null || amount <= 0) return;
-
-    setState(() {
-      if (selectedTransferType == TransferType.internal && selectedDestinationAccount != null) {
-        destinations.add(TransferDestinationInput(
-          destinationAccountId: selectedDestinationAccount,
-          amount: amount,
-        ));
-        selectedDestinationAccount = null;
-      } else if (selectedTransferType == TransferType.external && selectedVendor != null) {
-        destinations.add(TransferDestinationInput(
-          destinationVendorId: selectedVendor,
-          amount: amount,
-        ));
-        selectedVendor = null;
-      }
-      _transferAmountController.clear();
-    });
+  void _addRawDestinationEntry({bool isVendor = false}) {
+    if (isVendor) {
+      setState(() {
+        vendorRows.add({
+          'vendor': null,
+          'amount': TextEditingController(text: '0.00'),
+        });
+      });
+    } else {
+      setState(() {
+        destinationAccounts.add({
+          'account': null,
+          'amount': TextEditingController(text: '0.00'),
+        });
+      });
+    }
   }
 
   void _removeDestinationAccount(int index) {
@@ -125,20 +188,38 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
     });
   }
 
-  void _addVendorRow() {
-    setState(() {
-      vendorRows.add({
-        'vendor': null,
-        'amount': TextEditingController(text: '0.00'),
-      });
-    });
-  }
+  void _addVendorRow() => _addRawDestinationEntry(isVendor: true);
 
   void _removeVendorRow(int index) {
     setState(() {
       vendorRows[index]['amount'].dispose();
       vendorRows.removeAt(index);
     });
+  }
+
+  void _addSourceAccountRow() => _addRawSourceEntry();
+
+  void _addDestinationAccountRow() => _addRawDestinationEntry();
+
+  @override
+  void dispose() {
+    // Dispose single controllers
+    _transferAmountController.dispose();
+    _purposeController.dispose();
+    _remarksController.dispose();
+    
+    // Dispose dynamic list controllers
+    for (final row in sourceAccounts) {
+      row['amount'].dispose();
+    }
+    for (final row in destinationAccounts) {
+      row['amount'].dispose();
+    }
+    for (final row in vendorRows) {
+      row['amount'].dispose();
+    }
+    
+    super.dispose();
   }
 
   void _incrementAmount(TextEditingController controller, {double step = 0.01}) {
@@ -155,24 +236,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
     setState(() {});
   }
 
-  @override
-  void dispose() {
-    _transferAmountController.dispose();
-    _purposeController.dispose();
-    _remarksController.dispose();
-    // Dispose dynamic controllers
-    for (var account in sourceAccounts) {
-      account['amount']?.dispose();
-    }
-    for (var account in destinationAccounts) {
-      account['amount']?.dispose();
-    }
-    for (var vendor in vendorRows) {
-      vendor['amount']?.dispose();
-    }
-    super.dispose();
-  }
-
+  
   final List<Map<String, dynamic>> transferTypes = [
     {
       'type': 'Internal Transfer',
@@ -223,21 +287,6 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
     });
   }
 
-  void _onTransferModeChanged(String? value) {
-    if (value == null) return;
-
-    final mode = _getModeFromString(value);
-
-    setState(() {
-      selectedTransferMode = mode;
-      // Clear lists when mode changes
-      sources.clear();
-      destinations.clear();
-      selectedSourceAccount = null;
-      selectedDestinationAccount = null;
-      selectedVendor = null;
-    });
-  }
 
   Future<void> _handleSubmit() async {
     if (!_formKey.currentState!.validate() || _isSubmitting) return;
@@ -247,14 +296,159 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
     });
 
     try {
+      double? _parseAmount(String? text) {
+        if (text == null) return null;
+        final value = double.tryParse(text);
+        if (value == null || value <= 0) return null;
+        return value;
+      }
+
+      final currentSources = <TransferSourceInput>[];
+      final currentDestinations = <TransferDestinationInput>[];
+
+      if (selectedTransferType == TransferType.internal) {
+        if (selectedTransferMode == TransferMode.oneToOne) {
+          final amount = _parseAmount(_transferAmountController.text);
+          if (selectedSourceAccount != null &&
+              selectedDestinationAccount != null &&
+              amount != null) {
+            currentSources.add(TransferSourceInput(
+              sourceAccountId: selectedSourceAccount!,
+              amount: amount,
+            ));
+            currentDestinations.add(TransferDestinationInput(
+              destinationAccountId: selectedDestinationAccount,
+              amount: amount,
+            ));
+          }
+        } else if (selectedTransferMode == TransferMode.oneToMany) {
+          if (selectedSourceAccount != null && destinationAccounts.isNotEmpty) {
+            double total = 0;
+            for (final row in destinationAccounts) {
+              final accountId = row['account'] as String?;
+              final controller = row['amount'] as TextEditingController?;
+              final amount = _parseAmount(controller?.text);
+              if (accountId != null && amount != null) {
+                total += amount;
+                currentDestinations.add(TransferDestinationInput(
+                  destinationAccountId: accountId,
+                  amount: amount,
+                ));
+              }
+            }
+            if (total > 0) {
+              currentSources.add(TransferSourceInput(
+                sourceAccountId: selectedSourceAccount!,
+                amount: total,
+              ));
+            }
+          }
+        } else if (selectedTransferMode == TransferMode.manyToMany) {
+          for (final row in sourceAccounts) {
+            final accountId = row['account'] as String?;
+            final controller = row['amount'] as TextEditingController?;
+            final amount = _parseAmount(controller?.text);
+            if (accountId != null && amount != null) {
+              currentSources.add(TransferSourceInput(
+                sourceAccountId: accountId,
+                amount: amount,
+              ));
+            }
+          }
+          for (final row in destinationAccounts) {
+            final accountId = row['account'] as String?;
+            final controller = row['amount'] as TextEditingController?;
+            final amount = _parseAmount(controller?.text);
+            if (accountId != null && amount != null) {
+              currentDestinations.add(TransferDestinationInput(
+                destinationAccountId: accountId,
+                amount: amount,
+              ));
+            }
+          }
+        }
+      } else if (selectedTransferType == TransferType.external) {
+        if (selectedTransferMode == TransferMode.oneToOne) {
+          final amount = _parseAmount(_transferAmountController.text);
+          if (selectedSourceAccount != null && selectedVendor != null && amount != null) {
+            currentSources.add(TransferSourceInput(
+              sourceAccountId: selectedSourceAccount!,
+              amount: amount,
+            ));
+            currentDestinations.add(TransferDestinationInput(
+              destinationVendorId: selectedVendor,
+              amount: amount,
+            ));
+          }
+        } else if (selectedTransferMode == TransferMode.oneToMany) {
+          if (selectedSourceAccount != null && vendorRows.isNotEmpty) {
+            double total = 0;
+            for (final row in vendorRows) {
+              final vendorId = row['vendor'] as String?;
+              final controller = row['amount'] as TextEditingController?;
+              final amount = _parseAmount(controller?.text);
+              if (vendorId != null && amount != null) {
+                total += amount;
+                currentDestinations.add(TransferDestinationInput(
+                  destinationVendorId: vendorId,
+                  amount: amount,
+                ));
+              }
+            }
+            if (total > 0) {
+              currentSources.add(TransferSourceInput(
+                sourceAccountId: selectedSourceAccount!,
+                amount: total,
+              ));
+            }
+          }
+        } else if (selectedTransferMode == TransferMode.manyToMany) {
+          for (final row in sourceAccounts) {
+            final accountId = row['account'] as String?;
+            final controller = row['amount'] as TextEditingController?;
+            final amount = _parseAmount(controller?.text);
+            if (accountId != null && amount != null) {
+              currentSources.add(TransferSourceInput(
+                sourceAccountId: accountId,
+                amount: amount,
+              ));
+            }
+          }
+          for (final row in vendorRows) {
+            final vendorId = row['vendor'] as String?;
+            final controller = row['amount'] as TextEditingController?;
+            final amount = _parseAmount(controller?.text);
+            if (vendorId != null && amount != null) {
+              currentDestinations.add(TransferDestinationInput(
+                destinationVendorId: vendorId,
+                amount: amount,
+              ));
+            }
+          }
+        }
+      }
+
+      if (currentSources.isEmpty || currentDestinations.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please add at least one source and one destination with valid amounts.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() {
+          _isSubmitting = false;
+        });
+        return;
+      }
+
       final request = CreateAccountTransferRequest(
-        transferType: selectedTransferType ?? TransferType.internal,
-        transferMode: selectedTransferMode ?? TransferMode.oneToOne,
+        transferType: selectedTransferType,
+        transferMode: selectedTransferMode,
         purpose: _purposeController.text,
         remarks: _remarksController.text,
-        requestedById: '123e4567-e89b-12d3-a456-426614174000', // TODO: Get from auth
-        sources: sources,
-        destinations: destinations,
+        requestedById: '123e4567-e89b-12d3-a456-426614174000',
+        sources: currentSources,
+        destinations: currentDestinations,
       );
 
       final transfer = await _transferService.createTransfer(request);
@@ -268,7 +462,12 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
         ),
       );
 
-      // TODO: Navigate to transfer details or list
+      // Navigate to escrow accounts page with refresh flag
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/escrow-accounts',
+        (route) => route.settings.name == '/',
+        arguments: {'refresh': true},
+      );
     } catch (e) {
       if (!mounted) return;
 
@@ -701,7 +900,6 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
   }
 
   Widget _buildDynamicFormFields(BuildContext context, bool isSmallScreen) {
-    final colorScheme = Theme.of(context).colorScheme;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -711,8 +909,9 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           _buildDropdownField(
             label: 'Source Account',
             value: selectedSourceAccount,
-            items: availableAccounts,
+            itemsWithLabels: accountDropdownItems,
             isRequired: true,
+            isLoading: _isLoadingAccounts,
             onChanged: (value) {
               setState(() {
                 selectedSourceAccount = value;
@@ -723,8 +922,9 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           _buildDropdownField(
             label: 'Destination Account',
             value: selectedDestinationAccount,
-            items: availableAccounts,
+            itemsWithLabels: accountDropdownItems,
             isRequired: true,
+            isLoading: _isLoadingAccounts,
             onChanged: (value) {
               setState(() {
                 selectedDestinationAccount = value;
@@ -738,8 +938,9 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           _buildDropdownField(
             label: 'Source Account',
             value: selectedSourceAccount,
-            items: availableAccounts,
+            itemsWithLabels: accountDropdownItems,
             isRequired: true,
+            isLoading: _isLoadingAccounts,
             onChanged: (value) {
               setState(() {
                 selectedSourceAccount = value;
@@ -783,7 +984,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                             ),
                           CustomDropdown(
                             value: destinationAccounts[index]['account'],
-                            items: availableAccounts,
+                            itemsWithLabels: accountDropdownItems,
                             hint: 'Select account',
                             onChanged: (value) {
                               setState(() {
@@ -838,7 +1039,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
             }),
           const SizedBox(height: 8),
           OutlineButton(
-            onPressed: _addDestinationAccount,
+            onPressed: _addDestinationAccountRow,
             icon: Icons.add,
             label: 'Add Destination Account',
           ),
@@ -882,7 +1083,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                             ),
                           CustomDropdown(
                             value: sourceAccounts[index]['account'],
-                            items: availableAccounts,
+                            itemsWithLabels: accountDropdownItems,
                             hint: 'Select account',
                             onChanged: (value) {
                               setState(() {
@@ -937,7 +1138,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
             }),
           const SizedBox(height: 8),
           OutlineButton(
-            onPressed: _addSourceAccount,
+            onPressed: _addSourceAccountRow,
             icon: Icons.add,
             label: 'Add Source Account',
           ),
@@ -978,7 +1179,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                             ),
                           CustomDropdown(
                             value: destinationAccounts[index]['account'],
-                            items: availableAccounts,
+                            itemsWithLabels: accountDropdownItems,
                             hint: 'Select account',
                             onChanged: (value) {
                               setState(() {
@@ -1033,7 +1234,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
             }),
           const SizedBox(height: 8),
           OutlineButton(
-            onPressed: _addDestinationAccount,
+            onPressed: _addDestinationAccountRow,
             icon: Icons.add,
             label: 'Add Destination Account',
           ),
@@ -1044,8 +1245,9 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           _buildDropdownField(
             label: 'Source Account',
             value: selectedSourceAccount,
-            items: availableAccounts,
+            itemsWithLabels: accountDropdownItems,
             isRequired: true,
+            isLoading: _isLoadingAccounts,
             onChanged: (value) {
               setState(() {
                 selectedSourceAccount = value;
@@ -1056,8 +1258,9 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           _buildDropdownField(
             label: 'Vendor',
             value: selectedVendor,
-            items: availableVendors,
+            itemsWithLabels: vendorDropdownItems,
             isRequired: true,
+            isLoading: _isLoadingVendors,
             onChanged: (value) {
               setState(() {
                 selectedVendor = value;
@@ -1071,8 +1274,9 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
           _buildDropdownField(
             label: 'Source Account',
             value: selectedSourceAccount,
-            items: availableAccounts,
+            itemsWithLabels: accountDropdownItems,
             isRequired: true,
+            isLoading: _isLoadingAccounts,
             onChanged: (value) {
               setState(() {
                 selectedSourceAccount = value;
@@ -1116,7 +1320,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                             ),
                           CustomDropdown(
                             value: vendorRows[index]['vendor'],
-                            items: availableVendors,
+                            itemsWithLabels: vendorDropdownItems,
                             hint: 'Select vendor',
                             onChanged: (value) {
                               setState(() {
@@ -1216,7 +1420,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                             ),
                           CustomDropdown(
                             value: sourceAccounts[index]['account'],
-                            items: availableAccounts,
+                            itemsWithLabels: accountDropdownItems,
                             hint: 'Select account',
                             onChanged: (value) {
                               setState(() {
@@ -1271,7 +1475,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
             }),
           const SizedBox(height: 8),
           OutlineButton(
-            onPressed: _addSourceAccount,
+            onPressed: _addSourceAccountRow,
             icon: Icons.add,
             label: 'Add Source Account',
           ),
@@ -1312,7 +1516,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
                             ),
                           CustomDropdown(
                             value: vendorRows[index]['vendor'],
-                            items: availableVendors,
+                            itemsWithLabels: vendorDropdownItems,
                             hint: 'Select vendor',
                             onChanged: (value) {
                               setState(() {
@@ -1427,6 +1631,63 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
     );
   }
 
+  Widget _buildDropdownField({
+    required String label,
+    required String? value,
+    List<DropdownItem>? itemsWithLabels,
+    required ValueChanged<String?> onChanged,
+    bool isRequired = false,
+    bool isLoading = false,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurface,
+              ),
+            ),
+            if (isRequired) ...[
+              const SizedBox(width: 4),
+              Text(
+                '*',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+            if (isLoading) ...[
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        CustomDropdown(
+          value: value,
+          itemsWithLabels: itemsWithLabels,
+          hint: 'Select $label',
+          enabled: !isLoading,
+          onChanged: isLoading ? null : onChanged,
+        ),
+      ],
+    );
+  }
+
   Widget _buildTextField({
     required String label,
     required String hint,
@@ -1502,50 +1763,7 @@ class _CreateTransferPageState extends State<CreateTransferPage> {
     );
   }
 
-  Widget _buildDropdownField({
-    required String label,
-    required String? value,
-    required List<String> items,
-    required ValueChanged<String?> onChanged,
-    bool isRequired = false,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: colorScheme.onSurface,
-              ),
-            ),
-            if (isRequired) ...[
-              const SizedBox(width: 4),
-              Text(
-                '*',
-                style: TextStyle(
-                  color: Colors.red,
-                  fontSize: 16,
-                ),
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 8),
-        CustomDropdown(
-          value: value,
-          items: items,
-          hint: 'Select $label',
-          onChanged: onChanged,
-        ),
-      ],
-    );
-  }
-
+  
   Widget _buildTransferTypeCard(
       BuildContext context, {
         required String type,

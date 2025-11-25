@@ -8,6 +8,8 @@ class PrimaryButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool isLoading;
   final bool isDisabled;
+  final EdgeInsetsGeometry? padding;
+  final Size? minimumSize;
 
   const PrimaryButton({
     super.key,
@@ -18,6 +20,8 @@ class PrimaryButton extends StatelessWidget {
     required this.onPressed,
     this.isLoading = false,
     this.isDisabled = false,
+    this.padding,
+    this.minimumSize,
 
   });
 
@@ -27,9 +31,9 @@ class PrimaryButton extends StatelessWidget {
 
     final ButtonStyle style =
     FilledButton.styleFrom(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      padding: padding ?? const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      minimumSize: const Size(0, 54),
+      minimumSize: minimumSize ?? const Size(0, 54),
     ).copyWith(
       backgroundColor: WidgetStateProperty.resolveWith<Color>((states) {
         final baseColor = backgroundColor ?? Theme.of(context).colorScheme.primary;

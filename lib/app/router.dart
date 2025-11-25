@@ -283,6 +283,7 @@ import 'package:ppv_components/features/bank_rtgs_neft/widget/account_transfers_
 import 'package:ppv_components/features/bank_rtgs_neft/widget/create_transfer_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/bank_letters_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/create_bank_letter_page.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/widget/bank_letter_form_page.dart';
 import 'package:ppv_components/features/expense/screens/all_notes_page.dart';
 import 'package:ppv_components/features/expense/screens/create_note_page.dart';
 import 'package:ppv_components/features/approval_management/screens/create_approval_rule_page.dart';
@@ -424,6 +425,10 @@ final GoRouter router = GoRouter(
         GoRoute(
           path: '/escrow/bank-letter/create',
           builder: (context, state) => const CreateBankLetterPage(),
+        ),
+        GoRoute(
+          path: '/escrow/bank-letter/form',
+          builder: (context, state) => const BankLetterFormPage(),
         ),
 
         // Travel & Reimbursement

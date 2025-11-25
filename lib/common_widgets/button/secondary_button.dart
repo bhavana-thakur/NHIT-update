@@ -7,6 +7,8 @@ class SecondaryButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool isLoading;
   final bool isDisabled;
+  final EdgeInsetsGeometry? padding;
+  final Size? minimumSize;
 
   const SecondaryButton({
     super.key,
@@ -16,6 +18,8 @@ class SecondaryButton extends StatelessWidget {
     required this.onPressed,
     this.isLoading = false,
     this.isDisabled = false,
+    this.padding,
+    this.minimumSize,
   });
 
   @override
@@ -24,9 +28,9 @@ class SecondaryButton extends StatelessWidget {
 
     final ButtonStyle style =
         FilledButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+          padding: padding ?? const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          minimumSize: const Size(0, 54),
+          minimumSize: minimumSize ?? const Size(0, 54),
           side: BorderSide(
             color: Theme.of(context).colorScheme.outline.withValues(alpha:0.5),
             width: 1.2,

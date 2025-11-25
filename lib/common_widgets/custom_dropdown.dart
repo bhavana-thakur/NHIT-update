@@ -1,8 +1,19 @@
 import 'package:flutter/material.dart';
 
+class DropdownItem {
+  final String label;
+  final String value;
+
+  const DropdownItem({
+    required this.label,
+    required this.value,
+  });
+}
+
 class CustomDropdown extends StatelessWidget {
   final String? value;
-  final List<String> items;
+  final List<String>? items;
+  final List<DropdownItem>? itemsWithLabels;
   final String hint;
   final ValueChanged<String?>? onChanged;
   final bool enabled;
@@ -10,36 +21,55 @@ class CustomDropdown extends StatelessWidget {
   const CustomDropdown({
     super.key,
     this.value,
-    required this.items,
+    this.items,
+    this.itemsWithLabels,
     required this.hint,
     this.onChanged,
     this.enabled = true,
-  });
+  }) : assert(items != null || itemsWithLabels != null, 'Either items or itemsWithLabels must be provided');
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
+    // Build dropdown items from either simple strings or label/value pairs
+    final dropdownItems = itemsWithLabels != null
+        ? itemsWithLabels!.map((item) {
+            return DropdownMenuItem<String>(
+              value: item.value,
+              child: Text(
+                item.label,
+                style: TextStyle(
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            );
+          }).toList()
+        : items!.map((String item) {
+            return DropdownMenuItem<String>(
+              value: item,
+              child: Text(
+                item,
+                style: TextStyle(
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            );
+          }).toList();
+
     return DropdownButtonFormField<String>(
-      initialValue: value,
+      value: value,
       hint: Text(
         hint,
         style: TextStyle(
           color: colorScheme.onSurface.withValues(alpha: 0.5),
         ),
       ),
-      items: items.map((String item) {
-        return DropdownMenuItem<String>(
-          value: item,
-          child: Text(
-            item,
-            style: TextStyle(
-              color: colorScheme.onSurface,
-            ),
-          ),
-        );
-      }).toList(),
+      items: dropdownItems,
       onChanged: enabled ? onChanged : null,
+      isExpanded: true,
+      menuMaxHeight: 300,
+      alignment: AlignmentDirectional.centerStart,
       decoration: InputDecoration(
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),

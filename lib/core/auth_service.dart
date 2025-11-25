@@ -148,11 +148,13 @@ class AuthService {
       final role = user['role'].toString();
       final tenant = user['tenantId'].toString();
       final org = user['orgId'].toString();
+      final userId = user['id'].toString();
       
       await SecureStorage.write(SecureStorage.keyToken, token);
       await SecureStorage.write(SecureStorage.keyRole, role);
       await SecureStorage.write(SecureStorage.keyTenantId, tenant);
       await SecureStorage.write(SecureStorage.keyOrgId, org);
+      await SecureStorage.write(SecureStorage.keyUserId, userId);
       
       return {
         'token': token,
@@ -178,12 +180,16 @@ class AuthService {
       final role = (data['role'] ?? data['roleName'] ?? 'USER').toString();
       final tenant = data['tenantId']?.toString() ?? tenantId;
       final org = data['orgId']?.toString() ?? orgId;
+      final userId = data['user']?['id']?.toString() ?? data['userId']?.toString() ?? '';
       if (token.isNotEmpty) {
         await SecureStorage.write(SecureStorage.keyToken, token);
       }
       await SecureStorage.write(SecureStorage.keyRole, role);
       await SecureStorage.write(SecureStorage.keyTenantId, tenant);
       await SecureStorage.write(SecureStorage.keyOrgId, org);
+      if (userId.isNotEmpty) {
+        await SecureStorage.write(SecureStorage.keyUserId, userId);
+      }
       return data;
     }
     throw Exception('Login failed: ${res.statusCode} ${res.body}');
@@ -255,6 +261,7 @@ class AuthService {
         await SecureStorage.write(SecureStorage.keyRole, role);
         await SecureStorage.write(SecureStorage.keyTenantId, newUser['tenantId'].toString());
         await SecureStorage.write(SecureStorage.keyOrgId, newUser['orgId'].toString());
+        await SecureStorage.write(SecureStorage.keyUserId, newUser['id'].toString());
       }
       
       return {
@@ -277,10 +284,14 @@ class AuthService {
       final data = ApiClient.decode(res.body);
       if (role.toUpperCase() == 'USER') {
         final token = data['token']?.toString() ?? '';
+        final userId = data['user']?['id']?.toString() ?? data['userId']?.toString() ?? '';
         if (token.isNotEmpty) {
           await SecureStorage.write(SecureStorage.keyToken, token);
         }
         await SecureStorage.write(SecureStorage.keyRole, 'USER');
+        if (userId.isNotEmpty) {
+          await SecureStorage.write(SecureStorage.keyUserId, userId);
+        }
       }
       return data;
     }

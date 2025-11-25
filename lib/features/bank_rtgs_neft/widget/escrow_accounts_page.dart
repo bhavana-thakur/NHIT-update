@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:ppv_components/common_widgets/button/primary_button.dart';
+import 'package:ppv_components/common_widgets/button/secondary_button.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/models/escrow_account_response.dart' show EscrowAccount, EscrowAccountData;
 import 'package:ppv_components/features/bank_rtgs_neft/services/escrow_account_service.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/services/api_client.dart';
 import 'package:ppv_components/common_widgets/custom_table.dart';
 import 'package:ppv_components/common_widgets/badge.dart';
-import 'package:ppv_components/features/bank_rtgs_neft/widget/create_escrow_account_page.dart';
+import 'package:ppv_components/common_widgets/pagination.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/account_transfers_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/escrow_accounts_edit_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/view_escrow_account_detail.dart';
@@ -22,16 +25,19 @@ class EscrowAccountsPage extends StatefulWidget {
 class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
   final EscrowAccountService _service = EscrowAccountService();
   final TextEditingController _searchController = TextEditingController();
+  Timer? _debounceTimer;
   
-  int rowsPerPage = 1000; // Set high to fetch all records
-  int currentPage = 1; // Backend uses 1-based pagination
+  int rowsPerPage = 10;
+  int currentPage = 0;
   List<EscrowAccount> paginatedAccounts = [];
+  List<EscrowAccount> filteredAccounts = [];
   String? statusFilter;
   String searchQuery = '';
-  List<EscrowAccount> allAccounts = [];
+  List<EscrowAccount> masterList = []; // Store all data for frontend filtering
   int totalCount = 0;
   int? _hoveredCardIndex;
   bool _isLoading = false;
+  bool _isRefreshing = false;
   
   // Store EscrowAccountData mapping for operations that need account_id
   Map<String, EscrowAccountData> _accountDataMap = {};
@@ -44,7 +50,6 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
 
   // Edit and View mode state
   bool _isEditMode = false;
-  bool _isViewMode = false;
   EscrowAccountData? _accountToEdit;
 
   @override
@@ -54,18 +59,28 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
     ApiClient().initialize();
     _loadData();
   }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Check if we need to refresh from navigation arguments
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map && args['refresh'] == true) {
+      _loadData();
+    }
+  }
   
   @override
   void dispose() {
-    // Safely dispose the search controller
+    _debounceTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({bool showLoader = true}) async {
     await Future.wait([
       _loadStats(),
-      _loadAccounts(),
+      _loadAccounts(showLoader: showLoader),
     ]);
   }
 
@@ -93,20 +108,28 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
     }
   }
 
-  Future<void> _loadAccounts() async {
-    if (_isLoading) return;
-    
-    setState(() {
-      _isLoading = true;
-    });
+  Future<void> _loadAccounts({bool showLoader = true}) async {
+    if ((_isLoading && showLoader) || (_isRefreshing && !showLoader)) {
+      return;
+    }
+
+    if (showLoader) {
+      setState(() {
+        _isLoading = true;
+      });
+    } else {
+      setState(() {
+        _isRefreshing = true;
+      });
+    }
 
     try {
-      // Fetch ALL records from backend with high page_size
+      // Fetch ALL records from backend with high page_size (only once)
       final accountsData = await _service.listEscrowAccounts(
         page: 1,
         pageSize: 1000, // Fetch all records
-        searchQuery: searchQuery.isEmpty ? null : searchQuery,
-        statusFilter: statusFilter,
+        searchQuery: null, // No search filter on API
+        statusFilter: null, // No status filter on API
       );
 
       print('🔍 DEBUG: Fetched ${accountsData.length} accounts from backend');
@@ -124,24 +147,22 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
       
       // Store mapping from accountNumber to EscrowAccountData for ID lookups
       _accountDataMap.clear();
-      for (final accountData in accountsData) {
-        _accountDataMap[accountData.accountNumber] = accountData;
+      for (var accountData in accountsData) {
+        if (accountData.accountNumber.isNotEmpty) {
+          _accountDataMap[accountData.accountNumber] = accountData;
+        }
       }
 
-      if (mounted) {
-        setState(() {
-          allAccounts = uiAccounts;
-          paginatedAccounts = uiAccounts; // Show ALL records
-          totalCount = uiAccounts.length; // Total count of all records
-          _isLoading = false;
-        });
-      }
+      setState(() {
+        masterList = uiAccounts; // Store all data
+        filteredAccounts = uiAccounts; // Initialize filtered list
+        totalCount = uiAccounts.length;
+        currentPage = 0;
+        _updatePagination();
+      });
     } catch (e) {
       print('❌ ERROR loading accounts: $e');
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to load accounts: ${e.toString()}'),
@@ -149,33 +170,90 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
           ),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() {
+          if (showLoader) {
+            _isLoading = false;
+          } else {
+            _isRefreshing = false;
+          }
+        });
+      }
     }
   }
 
   void _applyFilter() {
-    currentPage = 1;
-    _loadAccounts();
+    setState(() {
+      currentPage = 1;
+    });
+    _applyFrontendFilters(); // Filter locally, no API call
+  }
+
+  void _applyFrontendFilters() {
+    setState(() {
+      // Start with master list and apply both search and status filters
+      filteredAccounts = masterList.where((account) {
+        // Apply status filter
+        final matchesStatus = statusFilter == null || 
+            statusFilter == 'All' || 
+            account.status.toLowerCase() == statusFilter!.toLowerCase();
+        
+        // Apply search filter
+        final matchesSearch = searchQuery.isEmpty ||
+            account.accountName.toLowerCase().contains(searchQuery) ||
+            account.accountNumber.toLowerCase().contains(searchQuery) ||
+            account.bank.toLowerCase().contains(searchQuery) ||
+            account.type.toLowerCase().contains(searchQuery) ||
+            account.status.toLowerCase().contains(searchQuery);
+        
+        return matchesStatus && matchesSearch;
+      }).toList();
+      
+      // Update paginated accounts from filtered list
+      _updatePagination();
+    });
   }
 
   void _refreshData() {
+    if (_isRefreshing) return;
     setState(() {
       statusFilter = null;
       searchQuery = '';
       _searchController.clear();
-      currentPage = 1;
+      currentPage = 0;
     });
-    _loadData();
+    _loadData(showLoader: false); // Refresh in background without blocking UI
   }
   
   void _onSearchChanged(String value) {
     // Only update if widget is still mounted
     if (!mounted) return;
     
-    setState(() {
-      searchQuery = value;
-      currentPage = 1; // Reset to first page on search
+    // Cancel previous timer
+    _debounceTimer?.cancel();
+    
+    // Set up new timer for debounce (400ms)
+    _debounceTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) {
+        setState(() {
+          searchQuery = value.toLowerCase();
+        });
+        _applyFrontendFilters(); // Filter locally, no API call
+      }
     });
-    _applyFilter();
+  }
+
+  void _onSearchSubmitted() {
+    // Immediate search on Enter or Search button click
+    _debounceTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        searchQuery = _searchController.text.toLowerCase();
+        currentPage = 0;
+      });
+      _applyFrontendFilters(); // Filter locally, no API call
+    }
   }
 
   void _showFilterDialog() {
@@ -236,12 +314,27 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
     );
   }
 
+  void _updatePagination() {
+    final start = currentPage * rowsPerPage;
+    final end = (start + rowsPerPage).clamp(0, filteredAccounts.length);
+    paginatedAccounts =
+        filteredAccounts.sublist(start, end);
+  }
+
   void changeRowsPerPage(int? value) {
-    // No-op: Display all records, no pagination
+    if (value == null) return;
+    setState(() {
+      rowsPerPage = value;
+      currentPage = 0;
+      _updatePagination();
+    });
   }
 
   void gotoPage(int page) {
-    // No-op: Display all records, no pagination
+    setState(() {
+      currentPage = page;
+      _updatePagination();
+    });
   }
 
   Color _getStatusColor(String status) {
@@ -267,7 +360,6 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
       final fullAccountData = await _service.getEscrowAccount(accountData.accountId);
       if (mounted) {
         setState(() {
-          _isViewMode = true;
           _isEditMode = false;
           _accountToEdit = fullAccountData;
         });
@@ -297,7 +389,6 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
       if (mounted) {
         setState(() {
           _isEditMode = true;
-          _isViewMode = false;
           _accountToEdit = fullAccountData;
         });
       }
@@ -331,7 +422,6 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
       if (mounted) {
         setState(() {
           _isEditMode = false;
-          _isViewMode = false;
           _accountToEdit = null;
         });
         
@@ -360,7 +450,6 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
   void _cancelEdit() {
     setState(() {
       _isEditMode = false;
-      _isViewMode = false;
       _accountToEdit = null;
     });
   }
@@ -426,7 +515,7 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      body: _isLoading && allAccounts.isEmpty
+      body: _isLoading && masterList.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : _accountToEdit != null
           ? (_isEditMode
@@ -508,27 +597,18 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
             ),
           ),
           const SizedBox(width: 16),
-          ElevatedButton.icon(
+          PrimaryButton(
+            icon: Icons.add,
+            label: 'Add Account',
             onPressed: () {
               GoRouter.of(context).go('/escrow-accounts/create');
             },
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Add Account'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: colorScheme.primary,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 14,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
           ),
 
           const SizedBox(width: 12),
-          OutlinedButton.icon(
+          SecondaryButton(
+            icon: Icons.swap_horiz,
+            label: 'View Transfers',
             onPressed: () {
               Navigator.push(
                 context,
@@ -537,21 +617,6 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
                 ),
               );
             },
-            icon: Icon(Icons.swap_horiz, size: 18, color: colorScheme.primary),
-            label: Text(
-              'View Transfers',
-              style: TextStyle(color: colorScheme.primary),
-            ),
-            style: OutlinedButton.styleFrom(
-              side: BorderSide(color: colorScheme.primary),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 14,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
           ),
         ],
       ),
@@ -665,48 +730,16 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
               ),
               Row(
                 children: [
-                  OutlinedButton.icon(
+                  SecondaryButton(
+                    icon: Icons.filter_list,
+                    label: statusFilter == null ? 'Filter' : 'Filter: $statusFilter',
                     onPressed: _showFilterDialog,
-                    icon: Icon(Icons.filter_list, size: 16, color: colorScheme.onSurface),
-                    label: Text(
-                      statusFilter == null ? 'Filter' : 'Filter: $statusFilter',
-                      style: TextStyle(
-                        color: colorScheme.onSurface,
-                        fontSize: 13,
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: colorScheme.outline),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
                   ),
                   const SizedBox(width: 8),
-                  OutlinedButton.icon(
+                  SecondaryButton(
+                    icon: Icons.refresh,
+                    label: 'Refresh',
                     onPressed: _refreshData,
-                    icon: Icon(Icons.refresh, size: 16, color: colorScheme.onSurface),
-                    label: Text(
-                      'Refresh',
-                      style: TextStyle(
-                        color: colorScheme.onSurface,
-                        fontSize: 13,
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: colorScheme.outline),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
                   ),
                 ],
               ),
@@ -726,11 +759,13 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
             constraints: const BoxConstraints(maxWidth: 400),
             child: TextField(
               controller: _searchController,
+              textInputAction: TextInputAction.search,
               onChanged: (value) {
                 if (mounted) {
                   _onSearchChanged(value);
                 }
               },
+              onSubmitted: (_) => _onSearchSubmitted(),
               decoration: InputDecoration(
                 hintText: 'Search by account name, number, or bank...',
                 hintStyle: TextStyle(
@@ -787,9 +822,10 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
                   ),
                 )
               : paginatedAccounts.isEmpty
-              ? _buildEmptyState(context)
-              : _buildTable(context),
-          if (paginatedAccounts.isNotEmpty && !_isLoading) _buildPagination(context),
+                  ? _buildEmptyState(context)
+                  : _buildTable(context),
+          if (paginatedAccounts.isNotEmpty && !_isLoading)
+            _buildPagination(context),
         ],
       ),
     );
@@ -812,7 +848,9 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
             ),
             const SizedBox(height: 16),
             Text(
-              'No escrow accounts found',
+              searchQuery.isNotEmpty || statusFilter != null
+                  ? 'No matching accounts found'
+                  : 'No escrow accounts found',
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w600,
                 color: colorScheme.onSurface,
@@ -820,7 +858,9 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Showing 0 to 0 of 0 entries',
+              searchQuery.isNotEmpty || statusFilter != null
+                  ? 'Try adjusting your search or filter criteria'
+                  : 'Showing 0 to 0 of 0 entries',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurface.withValues(alpha: 0.6),
               ),
@@ -1061,22 +1101,15 @@ class _EscrowAccountsPageState extends State<EscrowAccountsPage> {
   }
 
   Widget _buildPagination(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
-    
-    // Show total count instead of pagination controls
     return Padding(
       padding: const EdgeInsets.only(top: 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            'Showing all $totalCount entries',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurface.withValues(alpha: 0.7),
-            ),
-          ),
-        ],
+      child: CustomPaginationBar(
+        totalItems: filteredAccounts.length,
+        currentPage: currentPage,
+        rowsPerPage: rowsPerPage,
+        availableRowsPerPage: const [5, 10, 20, 50],
+        onRowsPerPageChanged: changeRowsPerPage,
+        onPageChanged: gotoPage,
       ),
     );
   }

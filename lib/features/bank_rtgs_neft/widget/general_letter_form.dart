@@ -1,6 +1,7 @@
 
 
 import 'package:flutter/material.dart';
+import 'package:ppv_components/common_widgets/button/primary_button.dart';
 import 'package:ppv_components/common_widgets/button/secondary_button.dart';
 import 'package:ppv_components/common_widgets/custom_dropdown.dart';
 import '../controllers/bank_letter_controller.dart';
@@ -75,10 +76,124 @@ Yours faithfully,
   }
 
   void _previewLetter() {
+    if (!_formKey.currentState!.validate()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please complete required fields to preview the letter.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final subject = _subjectController.text.trim().isEmpty
+        ? 'No subject provided'
+        : _subjectController.text.trim();
+    final content = _letterContentController.text.trim().isEmpty
+        ? 'No letter content provided yet.'
+        : _letterContentController.text.trim();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        final colorScheme = theme.colorScheme;
+
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 24,
+              right: 24,
+              top: 24,
+              bottom: 24 + MediaQuery.of(sheetContext).viewInsets.bottom,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'General Letter Preview',
+                          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text('Status: $selectedStatus', style: theme.textTheme.bodyMedium),
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: colorScheme.outlineVariant),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          subject,
+                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          content,
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SecondaryButton(
+                          onPressed: _downloadLetterPdf,
+                          icon: Icons.picture_as_pdf_outlined,
+                          label: 'Download PDF',
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: PrimaryButton(
+                          onPressed: () {
+                            Navigator.of(sheetContext).pop();
+                            _createLetter();
+                          },
+                          icon: Icons.send,
+                          label: 'Create Letter',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _downloadLetterPdf() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Preview: General Letter'),
-        backgroundColor: Colors.blue,
+        content: Text('Generating PDF for download...'),
+        backgroundColor: Colors.blueGrey,
       ),
     );
   }
@@ -244,39 +359,53 @@ Yours faithfully,
           const SizedBox(height: 32),
 
           // Action Buttons
-          isSmallScreen
-              ? Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SecondaryButton(
-                onPressed: widget.onCancel,
-                icon: Icons.cancel_outlined,
-                label: 'Cancel',
-              ),
-              const SizedBox(height: 12),
-              SecondaryButton(
-                onPressed: _createLetter,
-                icon: Icons.send,
-                label: 'Submit Letter',
-              ),
-            ],
-          )
-              : Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              SecondaryButton(
-                onPressed: widget.onCancel,
-                icon: Icons.cancel_outlined,
-                label: 'Cancel',
-              ),
-              const SizedBox(width: 12),
-              SecondaryButton(
-                onPressed: _createLetter,
-                icon: Icons.send,
-                label: 'Submit Letter',
-              ),
-            ],
-          ),
+          if (isSmallScreen) ...[
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SecondaryButton(
+                  onPressed: widget.onCancel,
+                  icon: Icons.cancel_outlined,
+                  label: 'Cancel',
+                ),
+                const SizedBox(height: 12),
+                SecondaryButton(
+                  onPressed: _previewLetter,
+                  icon: Icons.visibility_outlined,
+                  label: 'Preview Letter',
+                ),
+                const SizedBox(height: 12),
+                PrimaryButton(
+                  onPressed: _createLetter,
+                  icon: Icons.send,
+                  label: 'Create Letter',
+                ),
+              ],
+            ),
+          ] else ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                SecondaryButton(
+                  onPressed: widget.onCancel,
+                  icon: Icons.cancel_outlined,
+                  label: 'Cancel',
+                ),
+                const SizedBox(width: 12),
+                SecondaryButton(
+                  onPressed: _previewLetter,
+                  icon: Icons.visibility_outlined,
+                  label: 'Preview Letter',
+                ),
+                const SizedBox(width: 12),
+                PrimaryButton(
+                  onPressed: _createLetter,
+                  icon: Icons.send,
+                  label: 'Create Letter',
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

@@ -1,5 +1,7 @@
 import 'transfer_enums.dart';
+import 'transfer_model.dart';
 
+// Helper for Create Request - matches protobuf TransferSourceInput
 class TransferSourceInput {
   final String sourceAccountId;
   final double amount;
@@ -15,9 +17,11 @@ class TransferSourceInput {
   };
 }
 
+// Helper for Create Request - matches protobuf TransferDestinationInput
 class TransferDestinationInput {
-  final String? destinationAccountId;
-  final String? destinationVendorId;
+  // Must provide one of the following
+  final String? destinationAccountId; // For INTERNAL
+  final String? destinationVendorId;  // For EXTERNAL
   final double amount;
 
   TransferDestinationInput({
@@ -33,14 +37,15 @@ class TransferDestinationInput {
   };
 }
 
+// Matches protobuf message CreateAccountTransferRequest
 class CreateAccountTransferRequest {
-  final TransferType transferType;
-  final TransferMode transferMode;
-  final String purpose;
-  final String remarks;
-  final String requestedById;
-  final List<TransferSourceInput> sources;
-  final List<TransferDestinationInput> destinations;
+  final TransferType transferType;        // transfer_type = 1
+  final TransferMode transferMode;        // transfer_mode = 2
+  final String purpose;                   // purpose = 3
+  final String remarks;                   // remarks = 4
+  final String requestedById;             // requested_by_id = 5
+  final List<TransferSourceInput> sources;      // repeated sources = 6
+  final List<TransferDestinationInput> destinations; // repeated destinations = 7
 
   CreateAccountTransferRequest({
     required this.transferType,
@@ -96,6 +101,25 @@ class CreateAccountTransferRequest {
 
     return true;
   }
+}
+
+// Matches protobuf message AccountTransferResponse
+class AccountTransferResponse {
+  final Transfer transfer;
+
+  AccountTransferResponse({
+    required this.transfer,
+  });
+
+  factory AccountTransferResponse.fromJson(Map<String, dynamic> json) {
+    return AccountTransferResponse(
+      transfer: Transfer.fromJson(json['transfer'] as Map<String, dynamic>),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'transfer': transfer.toJson(),
+  };
 }
 
 class ValidationException implements Exception {

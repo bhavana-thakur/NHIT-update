@@ -126,6 +126,11 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
               "/escrow/bank-letter/create",
               Icons.create_outlined,
             ),
+            _SubItem(
+              "Bank Letter Form",
+              "/escrow/bank-letter/form",
+              Icons.description_outlined,
+            ),
           ],
         ),
         _SidebarItem(

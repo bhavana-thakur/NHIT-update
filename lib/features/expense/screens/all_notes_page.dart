@@ -2,6 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ppv_components/features/expense/data/expense_mockdb.dart';
 import 'package:ppv_components/features/expense/models/expense_model.dart';
+import 'package:ppv_components/common_widgets/custom_table.dart';
+import 'package:ppv_components/common_widgets/badge.dart';
+import 'package:ppv_components/common_widgets/pagination.dart';
+import 'package:ppv_components/common_widgets/button/primary_button.dart';
+import 'package:ppv_components/common_widgets/button/secondary_button.dart';
+import 'package:ppv_components/features/expense/widgets/view_expense_note_detail.dart';
+import 'package:ppv_components/features/expense/widgets/edit_expense_note_content.dart';
 
 class AllNotesPage extends StatefulWidget {
   const AllNotesPage({Key? key}) : super(key: key);
@@ -19,6 +26,20 @@ class _AllNotesPageState extends State<AllNotesPage> with SingleTickerProviderSt
   int currentPage = 0;
   int rowsPerPage = 10;
   int selectedTabIndex = 0;
+  String? statusFilter;
+  ExpenseNote? _activeNote;
+  bool _isViewingNote = false;
+  bool _isEditingNote = false;
+  static const String _filterValueReset = '__filter_reset__';
+  static const String _filterValueAll = '__filter_all__';
+  final List<String> _filterStatusOptions = const [
+    'All',
+    'Pending',
+    'Approved',
+    'Rejected',
+    'Draft',
+    'Cancelled',
+  ];
   
   // Data lists
   List<ExpenseNote> allNotes = [];
@@ -68,18 +89,24 @@ class _AllNotesPageState extends State<AllNotesPage> with SingleTickerProviderSt
     final searchTerm = searchController.text.toLowerCase();
     
     // Apply tab filter
+    List<ExpenseNote> workingList;
     if (_tabController.index == 0) {
-      filteredNotes = List<ExpenseNote>.from(allNotes);
+      workingList = List<ExpenseNote>.from(allNotes);
     } else {
       final status = _getStatusForTab(_tabController.index);
-      filteredNotes = allNotes.where((note) => 
-        note.status.toLowerCase() == status.toLowerCase()
-      ).toList();
+      workingList = allNotes.where((note) =>
+          note.status.toLowerCase() == status.toLowerCase()).toList();
+    }
+
+    if (statusFilter != null) {
+      workingList = workingList
+          .where((note) => note.status.toLowerCase() == statusFilter!.toLowerCase())
+          .toList();
     }
 
     // Apply search filter
     if (searchTerm.isNotEmpty) {
-      filteredNotes = filteredNotes.where((note) {
+      workingList = workingList.where((note) {
         return note.projectName.toLowerCase().contains(searchTerm) ||
                note.vendorName.toLowerCase().contains(searchTerm) ||
                note.invoiceValue.toString().contains(searchTerm) ||
@@ -87,6 +114,7 @@ class _AllNotesPageState extends State<AllNotesPage> with SingleTickerProviderSt
       }).toList();
     }
 
+    filteredNotes = workingList;
     // Reset to first page when filters change
     currentPage = 0;
     _updatePagination();
@@ -143,88 +171,120 @@ class _AllNotesPageState extends State<AllNotesPage> with SingleTickerProviderSt
     });
   }
 
-  // View dialog for note details
-  Future<void> _showViewDialog(ExpenseNote note) {
-    return showDialog(
+  void _openViewNote(ExpenseNote note) {
+    setState(() {
+      _activeNote = note;
+      _isViewingNote = true;
+      _isEditingNote = false;
+    });
+  }
+
+  void _openEditNote(ExpenseNote note) {
+    setState(() {
+      _activeNote = note;
+      _isViewingNote = false;
+      _isEditingNote = true;
+    });
+  }
+
+  void _closeDetailView() {
+    setState(() {
+      _activeNote = null;
+      _isViewingNote = false;
+      _isEditingNote = false;
+    });
+  }
+
+  void _handleFilterSelection(String selection) {
+    setState(() {
+      if (selection == _filterValueReset) {
+        statusFilter = null;
+        searchController.clear();
+      } else if (selection == _filterValueAll) {
+        statusFilter = null;
+      } else {
+        statusFilter = selection;
+      }
+      currentPage = 0;
+    });
+    _filterNotes();
+  }
+
+  Future<void> _cancelExpenseNote(ExpenseNote note) async {
+    final shouldCancel = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Note Details'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildDetailRow('Project', note.projectName),
-              _buildDetailRow('Vendor', note.vendorName),
-              _buildDetailRow('Amount', '\$${note.invoiceValue.toStringAsFixed(2)}'),
-              _buildDetailRow('Date', note.createdDate),
-              _buildDetailRow('Status', note.status, isStatus: true),
-            ],
-          ),
-        ),
+        title: const Text('Cancel Note'),
+        content: Text('Are you sure you want to cancel ${note.projectName.isEmpty ? 'this note' : note.projectName}?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('No'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Yes, Cancel'),
           ),
         ],
       ),
     );
+
+    if (shouldCancel == true) {
+      final cancelledNote = _noteWithStatus(note, 'Cancelled');
+      _updateNote(cancelledNote);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Note ${note.sNo} marked as Cancelled'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
-  // Helper method to build detail rows in the view dialog
-  Widget _buildDetailRow(String label, String value, {bool isStatus = false}) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+  void _updateNote(ExpenseNote updatedNote) {
+    setState(() {
+      final index = allNotes.indexWhere((note) => note.id == updatedNote.id);
+      if (index != -1) {
+        allNotes[index] = updatedNote;
+      }
+    });
+    _filterNotes();
+  }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 100,
-            child: Text(
-              label,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: isStatus
-                ? Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(value).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      value,
-                      style: TextStyle(
-                        color: _getStatusColor(value),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  )
-                : Text(value),
-          ),
-        ],
-      ),
+  ExpenseNote _noteWithStatus(ExpenseNote note, String status) {
+    return ExpenseNote(
+      id: note.id,
+      sNo: note.sNo,
+      projectName: note.projectName,
+      vendorName: note.vendorName,
+      invoiceValue: note.invoiceValue,
+      status: status,
+      createdDate: note.createdDate,
+      nextApprover: note.nextApprover,
+      department: note.department,
+      description: note.description,
+      requestedBy: note.requestedBy,
     );
   }
 
-  Widget _buildHeader(BuildContext context, BoxConstraints constraints) {
+  List<String> get _departmentOptions {
+    final departments = allNotes
+        .map((note) => note.department)
+        .where((dept) => dept.isNotEmpty)
+        .toSet()
+        .toList();
+    departments.sort();
+    return departments;
+  }
+
+  Widget _buildHeader(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
-    final isSmallScreen = constraints.maxWidth < 900;
 
     return Container(
-      padding: EdgeInsets.all(isSmallScreen ? 16 : 24),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(16),
@@ -270,462 +330,395 @@ class _AllNotesPageState extends State<AllNotesPage> with SingleTickerProviderSt
             ),
           ),
           const SizedBox(width: 16),
-          ElevatedButton.icon(
+          PrimaryButton(
+            label: 'Create Expense Note',
+            icon: Icons.add,
             onPressed: () {
               context.go('/expense/create-note');
             },
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Create Expense Note'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF10B981),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 14,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTableSection(BuildContext context, BoxConstraints constraints) {
+  Widget _buildTableSection(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
 
     return Container(
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        color: colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: colorScheme.outline,
+          width: 0.5,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Tabs and Search Bar
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                // Tabs
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: ToggleButtons(
-                      isSelected: List.generate(5, (index) => index == selectedTabIndex),
-                      onPressed: (index) {
-                        setState(() {
-                          selectedTabIndex = index;
-                          _tabController.index = index;
-                          currentPage = 0;
-                          _filterNotes();
-                        });
-                      },
-                      borderRadius: BorderRadius.circular(8),
-                      constraints: const BoxConstraints(
-                        minHeight: 40,
-                        minWidth: 100,
-                      ),
-                      children: const [
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 16),
-                          child: Text('All Notes'),
-                        ),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 16),
-                          child: Text('Pending'),
-                        ),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 16),
-                          child: Text('Approved'),
-                        ),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 16),
-                          child: Text('Rejected'),
-                        ),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 16),
-                          child: Text('Draft'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Search Bar
-                Container(
-                  width: constraints.maxWidth > 600 ? 300 : 200,
-                  height: 40,
-                  margin: const EdgeInsets.only(left: 16),
-                  child: TextField(
-                    controller: searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Search...',
-                      prefixIcon: const Icon(Icons.search, size: 20),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: colorScheme.outlineVariant),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: colorScheme.outlineVariant),
-                      ),
-                      filled: true,
-                      fillColor: colorScheme.surface,
-                    ),
-                    onChanged: (value) {
-                      setState(() {
-                        currentPage = 0;
-                        _filterNotes();
-                      });
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Table
-          if (filteredNotes.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(40),
-              alignment: Alignment.center,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.receipt_long_outlined,
-                    size: 64,
-                    color: colorScheme.onSurface.withOpacity(0.3),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No notes found',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: colorScheme.onSurface.withOpacity(0.6),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minWidth: constraints.maxWidth > 1200
-                      ? constraints.maxWidth - 32
-                      : 1200,
-                ),
-                child: DataTable(
-                  columns: const [
-                    DataColumn(label: Text('#')),
-                    DataColumn(label: Text('PROJECT')),
-                    DataColumn(label: Text('VENDOR')),
-                    DataColumn(label: Text('AMOUNT')),
-                    DataColumn(label: Text('DATE')),
-                    DataColumn(label: Text('STATUS')),
-                    DataColumn(label: Text('ACTIONS')),
-                  ],
-                  rows: List<DataRow>.generate(
-                    paginatedNotes.length,
-                    (index) {
-                      final note = paginatedNotes[index];
-                      final statusColor = _getStatusColor(note.status);
-
-                      return DataRow(
-                        cells: [
-                          DataCell(Text('${index + 1}')),
-                          DataCell(Text(note.projectName)),
-                          DataCell(Text(note.vendorName)),
-                          DataCell(Text('\$${note.invoiceValue.toStringAsFixed(2)}')),
-                          DataCell(Text(note.createdDate)),
-                          DataCell(
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: statusColor.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                note.status,
-                                style: TextStyle(
-                                  color: statusColor,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ),
-                          DataCell(
-                            Row(
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.visibility_outlined, size: 20),
-                                  onPressed: () => _showViewDialog(note),
-                                  tooltip: 'View',
-                                  color: colorScheme.primary,
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.edit_outlined, size: 20),
-                                  onPressed: () {
-                                    // Handle edit
-                                  },
-                                  tooltip: 'Edit',
-                                  color: colorScheme.primary,
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline, size: 20),
-                                  onPressed: () {
-                                    // Handle delete
-                                  },
-                                  tooltip: 'Delete',
-                                  color: colorScheme.error,
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ),
-
-          // Pagination
-          if (filteredNotes.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Showing ${currentPage * rowsPerPage + 1} to ${currentPage * rowsPerPage + paginatedNotes.length} of ${filteredNotes.length} entries',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      Text(
-                        'Rows per page:',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                      const SizedBox(width: 8),
-                      DropdownButton<int>(
-                        value: rowsPerPage,
-                        items: [5, 10, 25, 50].map((int value) {
-                          return DropdownMenuItem<int>(
-                            value: value,
-                            child: Text(value.toString()),
-                          );
-                        }).toList(),
-                        onChanged: changeRowsPerPage,
-                        underline: Container(
-                          height: 1,
-                          color: colorScheme.outlineVariant,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      IconButton(
-                        icon: const Icon(Icons.chevron_left),
-                        onPressed: currentPage == 0
-                            ? null
-                            : () {
-                                setState(() {
-                                  currentPage--;
-                                  _updatePagination();
-                                });
-                              },
-                        iconSize: 20,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${currentPage + 1} of ${(filteredNotes.length / rowsPerPage).ceil()}',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: const Icon(Icons.chevron_right),
-                        onPressed: (currentPage + 1) * rowsPerPage >= filteredNotes.length
-                            ? null
-                            : () {
-                                setState(() {
-                                  currentPage++;
-                                  _updatePagination();
-                                });
-                              },
-                        iconSize: 20,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatsCards(BuildContext context, BoxConstraints constraints) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    final totalNotes = allNotes.length;
-    final pendingNotes = allNotes.where((note) => note.status.toLowerCase() == 'pending').length;
-    final approvedNotes = allNotes.where((note) => note.status.toLowerCase() == 'approved').length;
-    final draftNotes = allNotes.where((note) => note.status.toLowerCase() == 'draft').length;
-
-    final isSmallScreen = constraints.maxWidth < 600;
-    final isMediumScreen = constraints.maxWidth < 900;
-
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: isSmallScreen ? 2 : (isMediumScreen ? 2 : 4),
-      crossAxisSpacing: 16,
-      mainAxisSpacing: 16,
-      childAspectRatio: isSmallScreen ? 1.5 : (isMediumScreen ? 1.8 : 2.2),
-      children: [
-        _buildStatCard(
-          context: context,
-          icon: Icons.receipt,
-          label: 'Total Notes',
-          value: totalNotes.toString(),
-          color: colorScheme.primary,
-        ),
-        _buildStatCard(
-          context: context,
-          icon: Icons.pending_actions,
-          label: 'Pending Approval',
-          value: pendingNotes.toString(),
-          color: Colors.orange,
-        ),
-        _buildStatCard(
-          context: context,
-          icon: Icons.check_circle,
-          label: 'Approved',
-          value: approvedNotes.toString(),
-          color: Colors.green,
-        ),
-        _buildStatCard(
-          context: context,
-          icon: Icons.drafts,
-          label: 'Draft Notes',
-          value: draftNotes.toString(),
-          color: Colors.grey,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatCard({
-    required BuildContext context,
-    required IconData icon,
-    required String label,
-    required String value,
-    required Color color,
-  }) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: color, size: 20),
+              Row(
+                children: [
+                  Icon(
+                    Icons.grid_view,
+                    color: colorScheme.primary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'All Expense Notes',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                ],
               ),
-              Text(
-                value,
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.onSurface,
-                ),
+              Row(
+                children: [
+                  PopupMenuButton<String>(
+                    onSelected: _handleFilterSelection,
+                    offset: const Offset(0, 40),
+                    child: SecondaryButton(
+                      icon: Icons.filter_list,
+                      label: statusFilter == null ? 'Filter' : 'Filter: $statusFilter',
+                      onPressed: null,
+                    ),
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: _filterValueReset,
+                        child: Row(
+                          children: [
+                            Icon(Icons.refresh, size: 18, color: colorScheme.primary),
+                            const SizedBox(width: 8),
+                            const Text('Reset All'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuDivider(),
+                      ..._filterStatusOptions.map((option) {
+                        final value = option == 'All' ? _filterValueAll : option;
+                        return PopupMenuItem(
+                          value: value,
+                          child: Row(
+                            children: [
+                              if (statusFilter == null && option == 'All' || statusFilter == option)
+                                Icon(Icons.check, size: 18, color: colorScheme.primary)
+                              else
+                                const SizedBox(width: 18),
+                              const SizedBox(width: 8),
+                              Text(option),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                  const SizedBox(width: 8),
+                  SecondaryButton(
+                    icon: Icons.refresh,
+                    label: 'Refresh',
+                    onPressed: () {
+                      setState(() {
+                        statusFilter = null;
+                        searchController.clear();
+                      });
+                      _filterNotes();
+                    },
+                  ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Text(
-            label,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurface.withOpacity(0.7),
+            'Manage and track expense note requests and approvals',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurface.withValues(alpha: 0.6),
             ),
           ),
+          const SizedBox(height: 16),
+          // Search bar
+          Container(
+            width: double.infinity,
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: TextField(
+              controller: searchController,
+              textInputAction: TextInputAction.search,
+              onChanged: (value) {
+                setState(() {
+                  currentPage = 0;
+                  _filterNotes();
+                });
+              },
+              decoration: InputDecoration(
+                hintText: 'Search by project, vendor, or amount...',
+                hintStyle: TextStyle(
+                  color: colorScheme.onSurface.withValues(alpha: 0.5),
+                  fontSize: 14,
+                ),
+                prefixIcon: Icon(
+                  Icons.search,
+                  color: colorScheme.onSurface.withValues(alpha: 0.5),
+                  size: 20,
+                ),
+                suffixIcon: searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(
+                          Icons.clear,
+                          color: colorScheme.onSurface.withValues(alpha: 0.5),
+                          size: 20,
+                        ),
+                        onPressed: () {
+                          searchController.clear();
+                          setState(() {
+                            currentPage = 0;
+                            _filterNotes();
+                          });
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: colorScheme.surface,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: colorScheme.outline),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: colorScheme.outline),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: colorScheme.primary, width: 2),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          paginatedNotes.isEmpty
+              ? _buildEmptyState(context)
+              : _buildTable(context),
+          if (paginatedNotes.isNotEmpty)
+            _buildPagination(context),
         ],
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            padding: EdgeInsets.all(constraints.maxWidth < 900 ? 16 : 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildEmptyState(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 60),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.receipt_long_outlined,
+              size: 64,
+              color: colorScheme.onSurface.withValues(alpha: 0.3),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              searchController.text.isNotEmpty || statusFilter != null
+                  ? 'No matching notes found'
+                  : 'No expense notes found',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              searchController.text.isNotEmpty || statusFilter != null
+                  ? 'Try adjusting your search or filter criteria'
+                  : 'Showing 0 to 0 of 0 entries',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPagination(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: CustomPaginationBar(
+        totalItems: filteredNotes.length,
+        currentPage: currentPage,
+        rowsPerPage: rowsPerPage,
+        availableRowsPerPage: const [5, 10, 20, 50],
+        onRowsPerPageChanged: changeRowsPerPage,
+        onPageChanged: gotoPage,
+      ),
+    );
+  }
+
+  Widget _buildTable(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    final columns = [
+      DataColumn(
+        label: Text('#', style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w600)),
+      ),
+      DataColumn(
+        label: Text('Project Name', style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w600)),
+      ),
+      DataColumn(
+        label: Text('Vendor Name', style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w600)),
+      ),
+      DataColumn(
+        label: Text('Invoice Amount', style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w600)),
+      ),
+      DataColumn(
+        label: Text('Date', style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w600)),
+      ),
+      DataColumn(
+        label: Text('Status', style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w600)),
+      ),
+      DataColumn(
+        label: Text('Actions', style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w600)),
+      ),
+    ];
+
+    final rows = List.generate(paginatedNotes.length, (index) {
+      final note = paginatedNotes[index];
+
+      return DataRow(
+        cells: [
+          DataCell(
+            Text(
+              '${index + 1}',
+              style: TextStyle(color: colorScheme.onSurface, fontSize: 13),
+            ),
+          ),
+          DataCell(
+            Text(
+              note.projectName.isEmpty ? 'N/A' : note.projectName,
+              style: TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+          ),
+          DataCell(
+            Text(
+              note.vendorName.isEmpty ? 'N/A' : note.vendorName,
+              style: TextStyle(color: Colors.black87, fontSize: 13),
+            ),
+          ),
+          DataCell(
+            Text(
+              '\$${note.invoiceValue.toStringAsFixed(2)}',
+              style: TextStyle(
+                color: Colors.green.shade700,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          DataCell(
+            Text(
+              note.createdDate,
+              style: TextStyle(color: Colors.black87, fontSize: 13),
+            ),
+          ),
+          DataCell(
+            BadgeChip(
+              label: note.status,
+              type: ChipType.status,
+              statusKey: note.status,
+              statusColorFunc: _getStatusColor,
+            ),
+          ),
+          DataCell(
+            Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // Header Section
-                _buildHeader(context, constraints),
-                const SizedBox(height: 24),
-                
-                // Stats Cards
-                _buildStatsCards(context, constraints),
-                const SizedBox(height: 24),
-                
-                // Table Section
-                _buildTableSection(context, constraints),
+                IconButton(
+                  icon: Icon(Icons.visibility, size: 18, color: colorScheme.primary),
+                  onPressed: () => _openViewNote(note),
+                  tooltip: 'View',
+                ),
+                IconButton(
+                  icon: Icon(Icons.edit, size: 18, color: Colors.blue.shade700),
+                  onPressed: () => _openEditNote(note),
+                  tooltip: 'Edit',
+                ),
+                IconButton(
+                  icon: Icon(Icons.cancel, size: 18, color: colorScheme.error),
+                  onPressed: () => _cancelExpenseNote(note),
+                  tooltip: 'Cancel',
+                ),
               ],
             ),
-          );
-        },
+          ),
+        ],
+      );
+    });
+
+    return CustomTable(
+      columns: columns,
+      rows: rows,
+    );
+  }
+
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    if (_isViewingNote && _activeNote != null) {
+      return Scaffold(
+        backgroundColor: colorScheme.surface,
+        body: ViewExpenseNoteDetail(
+          note: _activeNote!,
+          onClose: _closeDetailView,
+        ),
+      );
+    }
+
+    if (_isEditingNote && _activeNote != null) {
+      return Scaffold(
+        backgroundColor: colorScheme.surface,
+        body: EditExpenseNoteContent(
+          note: _activeNote!,
+          departmentOptions: _departmentOptions,
+          onSave: (updatedNote) {
+            _updateNote(updatedNote);
+            _closeDetailView();
+          },
+          onCancel: _closeDetailView,
+        ),
+      );
+    }
+    
+    return Scaffold(
+      backgroundColor: colorScheme.surface,
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(context),
+              const SizedBox(height: 16),
+              _buildTableSection(context),
+            ],
+          ),
+        ),
       ),
     );
   }

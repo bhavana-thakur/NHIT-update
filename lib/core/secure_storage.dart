@@ -7,6 +7,7 @@ class SecureStorage {
   static const String keyRole = 'auth_role';
   static const String keyTenantId = 'tenant_id';
   static const String keyOrgId = 'org_id';
+  static const String keyUserId = 'user_id';
 
   static Future<void> write(String key, String value) async {
     await _storage.write(key: key, value: value);

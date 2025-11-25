@@ -1,19 +1,19 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:ppv_components/common_widgets/button/primary_button.dart';
-import 'package:ppv_components/common_widgets/button/outlined_button.dart';
+import 'package:ppv_components/common_widgets/button/secondary_button.dart';
 import 'package:ppv_components/common_widgets/custom_table.dart';
 import 'package:ppv_components/common_widgets/pagination.dart';
 import 'package:ppv_components/common_widgets/badge.dart';
-import 'package:ppv_components/features/bank_rtgs_neft/widget/%20edit_transfer_content.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/bank_letters_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/escrow_accounts_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/create_transfer_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/create_bank_letter_page.dart';
 import 'package:ppv_components/features/bank_rtgs_neft/widget/create_escrow_account_page.dart';
-import 'package:ppv_components/features/bank_rtgs_neft/models/bank_models/account_transfer_model.dart';
-import 'package:ppv_components/features/bank_rtgs_neft/data/bank_dummydata/account_transfer_dummy.dart';
-import 'package:ppv_components/features/bank_rtgs_neft/widget/view_transfer_detail.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/models/transfer_models/transfer_enums.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/models/transfer_models/transfer_model.dart';
+import 'package:ppv_components/features/bank_rtgs_neft/services/account_transfer_service.dart';
+import 'package:ppv_components/core/secure_storage.dart';
 
 class AccountTransfersPage extends StatefulWidget {
   const AccountTransfersPage({super.key});
@@ -23,10 +23,14 @@ class AccountTransfersPage extends StatefulWidget {
 }
 
 class _AccountTransfersPageState extends State<AccountTransfersPage> {
+  final AccountTransferService _transferService = AccountTransferService();
+
   int rowsPerPage = 10;
   int currentPage = 0;
   String searchQuery = '';
   String? statusFilter;
+  bool _isLoading = false;
+  bool _isDetailLoading = false;
 
   // Hover states for stat cards and quick action buttons
   int? _hoveredCardIndex;
@@ -35,100 +39,598 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
   // Edit and View mode state
   bool _isEditMode = false;
   bool _isViewMode = false;
-  AccountTransfer? _transferToEdit;
+  Transfer? _transferToEdit;
+  TransferStatus? _editingStatus;
 
-  late List<AccountTransfer> filteredTransfers;
-  late List<AccountTransfer> paginatedTransfers;
-  late List<AccountTransfer> allTransfers;
+  List<Transfer> filteredTransfers = [];
+  List<Transfer> paginatedTransfers = [];
+  List<Transfer> allTransfers = [];
 
-  // Data for CreateTransferPage
-  final List<String> sourceAccounts = [
-    'Main Account - ACC001',
-    'Savings Account - ACC002',
-    'Business Account - ACC003',
-    'Project Account - ACC004',
-  ];
-
-  final List<String> destinationAccounts = [
-    'Main Account - ACC001',
-    'Savings Account - ACC002',
-    'Business Account - ACC003',
-    'Project Account - ACC004',
-  ];
-
-  final List<Map<String, dynamic>> transferTypes = [
-    {
-      'type': 'Internal Transfer',
-      'icon': Icons.swap_horiz,
-      'color': Colors.cyan,
-      'description': 'Transfer between your own accounts',
-    },
-    {
-      'type': 'External Transfer',
-      'icon': Icons.send,
-      'color': Colors.purple,
-      'description': 'Transfer to external beneficiaries',
-    },
-  ];
-
-  final List<Map<String, dynamic>> transferModes = [
-    {
-      'mode': 'One to One',
-      'icon': Icons.arrow_forward,
-      'color': Colors.blue,
-      'description': 'Single account to single account',
-    },
-    {
-      'mode': 'One to Many',
-      'icon': Icons.account_tree,
-      'color': Colors.orange,
-      'description': 'Single account to multiple accounts',
-    },
-    {
-      'mode': 'Many to Many',
-      'icon': Icons.hub,
-      'color': Colors.purple,
-      'description': 'Multiple accounts to multiple accounts',
-    },
-  ];
-
-  final List<Map<String, dynamic>> paymentMethods = [
-    {
-      'method': 'RTGS',
-      'icon': Icons.account_balance,
-      'color': Colors.blue,
-      'description': 'Real Time Gross Settlement',
-      'minAmount': '₹2,00,000',
-    },
-    {
-      'method': 'NEFT',
-      'icon': Icons.swap_horiz,
-      'color': Colors.green,
-      'description': 'National Electronic Funds Transfer',
-      'minAmount': 'No minimum',
-    },
-    {
-      'method': 'IMPS',
-      'icon': Icons.flash_on,
-      'color': Colors.orange,
-      'description': 'Immediate Payment Service',
-      'minAmount': 'No minimum',
-    },
-    {
-      'method': 'UPI',
-      'icon': Icons.qr_code_2,
-      'color': Colors.purple,
-      'description': 'Unified Payments Interface',
-      'minAmount': 'No minimum',
-    },
-  ];
+  // Stats data
+  int totalTransfers = 0;
+  int pendingApproval = 0;
+  int completed = 0;
+  int totalAmount = 0;
 
   @override
   void initState() {
     super.initState();
-    allTransfers = List<AccountTransfer>.from(accountTransferDummyData);
-    filteredTransfers = allTransfers;
-    _updatePagination();
+    _loadData();
+  }
+
+  Widget _buildReadOnlyField(
+    BuildContext context, {
+    required String label,
+    required String value,
+    int maxLines = 1,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: colorScheme.primary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          initialValue: value.isEmpty ? '-' : value,
+          readOnly: true,
+          maxLines: maxLines,
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: colorScheme.surface,
+            contentPadding: EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: maxLines > 1 ? 18 : 14,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: colorScheme.outline.withValues(alpha: 0.4),
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: colorScheme.primary.withValues(alpha: 0.6),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTransferDetailView(BuildContext context, Transfer transfer) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    final fromAccount = transfer.sourceAccountName?.isNotEmpty == true
+        ? transfer.sourceAccountName!
+        : transfer.transferLegs.isNotEmpty
+        ? (transfer.transferLegs.first.sourceAccount?.accountName ??
+              transfer.transferLegs.first.sourceAccountId)
+        : '-';
+    final toAccount = transfer.destinationAccountName?.isNotEmpty == true
+        ? transfer.destinationAccountName!
+        : (transfer.transferLegs.isNotEmpty
+              ? (transfer.transferLegs.first.destinationAccount?.accountName ??
+                    transfer.transferLegs.first.destinationVendor?.name ??
+                    transfer.transferLegs.first.destinationAccountId ??
+                    transfer.transferLegs.first.destinationVendorId ??
+                    '-')
+              : '-');
+
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainer,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: colorScheme.outline.withValues(alpha: 0.4),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.visibility, color: colorScheme.primary),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'View Transfer',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Transfer details and information',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  SecondaryButton(
+                    label: 'Back to Transfers',
+                    icon: Icons.arrow_back,
+                    onPressed: _cancelEdit,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainer,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: colorScheme.outline.withValues(alpha: 0.4),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.swap_horiz,
+                        color: colorScheme.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Transfer Information',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildReadOnlyField(
+                          context,
+                          label: 'Reference',
+                          value: transfer.transferReference,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildReadOnlyField(
+                          context,
+                          label: 'Type',
+                          value: transfer.transferType.value.split('_').last,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildReadOnlyField(
+                          context,
+                          label: 'Mode',
+                          value: transfer.transferMode.value.split('_').last,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildReadOnlyField(
+                          context,
+                          label: 'Amount',
+                          value: '₹${transfer.totalAmount.toStringAsFixed(2)}',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildReadOnlyField(
+                          context,
+                          label: 'From Account',
+                          value: fromAccount,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildReadOnlyField(
+                          context,
+                          label: 'To Account',
+                          value: toAccount,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildReadOnlyField(
+                          context,
+                          label: 'Status',
+                          value: transfer.status.value.split('_').last,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildReadOnlyField(
+                          context,
+                          label: 'Requested By',
+                          value:
+                              transfer.requestedBy?.name ??
+                              transfer.requestedById,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildReadOnlyField(
+                          context,
+                          label: 'Purpose',
+                          value: transfer.purpose,
+                          maxLines: 3,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildReadOnlyField(
+                          context,
+                          label: 'Remarks',
+                          value: transfer.remarks,
+                          maxLines: 3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            Align(
+              alignment: Alignment.centerRight,
+              child: SecondaryButton(
+                label: 'Close',
+                icon: Icons.close,
+                onPressed: _cancelEdit,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTransferEditView(BuildContext context, Transfer transfer) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final statusOptions = TransferStatus.values
+        .where((s) => s != TransferStatus.unknown)
+        .toList();
+    final currentStatus = _editingStatus ?? transfer.status;
+
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainer,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: colorScheme.outline.withValues(alpha: 0.4),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.edit, color: colorScheme.primary),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Edit Transfer',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Update transfer details and information',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  SecondaryButton(
+                    label: 'Back to Transfers',
+                    icon: Icons.arrow_back,
+                    onPressed: _cancelEdit,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainer,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: colorScheme.outline.withValues(alpha: 0.4),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.assignment,
+                        color: colorScheme.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Transfer Information',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildReadOnlyField(
+                          context,
+                          label: 'Reference',
+                          value: transfer.transferReference,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildReadOnlyField(
+                          context,
+                          label: 'Type',
+                          value: transfer.transferType.value.split('_').last,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildReadOnlyField(
+                          context,
+                          label: 'From Account',
+                          value: transfer.sourceAccountName ?? '-',
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildReadOnlyField(
+                          context,
+                          label: 'To Account',
+                          value: transfer.destinationAccountName ?? '-',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildReadOnlyField(
+                          context,
+                          label: 'Amount',
+                          value: '₹${transfer.totalAmount.toStringAsFixed(2)}',
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: DropdownButtonFormField<TransferStatus>(
+                          value: currentStatus,
+                          decoration: InputDecoration(
+                            labelText: 'Status',
+                            filled: true,
+                            fillColor: colorScheme.surface,
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: colorScheme.outline.withValues(
+                                  alpha: 0.3,
+                                ),
+                              ),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: colorScheme.primary.withValues(
+                                  alpha: 0.7,
+                                ),
+                              ),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          items: statusOptions
+                              .map(
+                                (status) => DropdownMenuItem(
+                                  value: status,
+                                  child: Text(status.value.split('_').last),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() {
+                                _editingStatus = value;
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SecondaryButton(label: 'Cancel', onPressed: _cancelEdit),
+                  const SizedBox(width: 12),
+                  PrimaryButton(
+                    label: 'Save Changes',
+                    icon: Icons.check,
+                    onPressed: () {
+                      if (_editingStatus == null) return;
+                      final updatedTransfer = transfer.copyWith(
+                        status: _editingStatus,
+                      );
+                      _saveEditedTransfer(updatedTransfer);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Check if we need to refresh from navigation arguments
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map && args['refresh'] == true) {
+      _loadData();
+    }
+  }
+
+  Future<void> _loadData() async {
+    await Future.wait([_loadStats(), _loadTransfers()]);
+  }
+
+  Future<void> _loadStats() async {
+    try {
+      final stats = await _transferService.getTransferStats();
+
+      // Support both snake_case (older API) and camelCase (current API)
+      int _getStatValue(String camelCaseKey, String snakeCaseKey) {
+        if (stats.containsKey(camelCaseKey)) {
+          return stats[camelCaseKey] as int? ?? 0;
+        }
+        if (stats.containsKey(snakeCaseKey)) {
+          return stats[snakeCaseKey] as int? ?? 0;
+        }
+        return 0;
+      }
+
+      if (mounted) {
+        setState(() {
+          totalTransfers =
+              _getStatValue('totalTransfers', 'total_transfers');
+          pendingApproval =
+              _getStatValue('pendingApproval', 'pending_approval');
+          completed = _getStatValue('completed', 'completed_transfers');
+          totalAmount = _getStatValue('totalAmount', 'total_amount');
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load stats: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadTransfers() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final transfers = await _transferService.listTransfers(
+        page: 1,
+        pageSize: 1000, // Load all for client-side filtering
+      );
+
+      setState(() {
+        allTransfers = transfers;
+        _applyFilters();
+        _updatePagination();
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load transfers: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _updatePagination() {
@@ -165,15 +667,42 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
 
   void _applyFilters() {
     filteredTransfers = allTransfers.where((transfer) {
-      final matchesSearch = searchQuery.isEmpty ||
-          transfer.reference.toLowerCase().contains(searchQuery) ||
-          transfer.fromAccount.toLowerCase().contains(searchQuery) ||
-          transfer.toAccount.toLowerCase().contains(searchQuery) ||
-          transfer.status.toLowerCase().contains(searchQuery);
+      final statusString = transfer.status
+          .toString()
+          .split('.')
+          .last
+          .toLowerCase();
+      final referenceString = transfer.transferReference;
 
-      final matchesStatus = statusFilter == null ||
+      // Prefer backend-provided top-level fields, fallback to legs for backward compatibility
+      final sourceAccountName =
+          transfer.sourceAccountName ??
+          (transfer.transferLegs.isNotEmpty
+              ? (transfer.transferLegs.first.sourceAccount?.accountName ??
+                    transfer.transferLegs.first.sourceAccountId)
+              : null);
+
+      final destinationAccountName =
+          transfer.destinationAccountName ??
+          (transfer.transferLegs.isNotEmpty
+              ? (transfer.transferLegs.first.destinationAccount?.accountName ??
+                    transfer.transferLegs.first.destinationVendor?.name ??
+                    transfer.transferLegs.first.destinationAccountId ??
+                    transfer.transferLegs.first.destinationVendorId ??
+                    '')
+              : null);
+
+      final matchesSearch =
+          searchQuery.isEmpty ||
+          referenceString.toLowerCase().contains(searchQuery) ||
+          (sourceAccountName ?? '').toLowerCase().contains(searchQuery) ||
+          (destinationAccountName ?? '').toLowerCase().contains(searchQuery) ||
+          statusString.contains(searchQuery);
+
+      final matchesStatus =
+          statusFilter == null ||
           statusFilter == 'All' ||
-          transfer.status == statusFilter;
+          statusString == statusFilter?.toLowerCase();
 
       return matchesSearch && matchesStatus;
     }).toList();
@@ -269,39 +798,77 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
     switch (status.toLowerCase()) {
       case 'completed':
         return Colors.green;
+      case 'pendingapproval':
       case 'pending approval':
+      case 'pending':
         return Colors.orange;
+      case 'inprogress':
       case 'in progress':
+      case 'processing':
         return Colors.blue;
+      case 'approved':
+        return Colors.lightGreen;
+      case 'rejected':
+      case 'cancelled':
+        return Colors.red;
       default:
         return Colors.grey;
     }
   }
 
-  void onViewTransfer(AccountTransfer transfer) {
+  Future<void> _openTransferDetail(
+    Transfer transfer, {
+    required bool edit,
+  }) async {
     setState(() {
-      _isViewMode = true;
-      _isEditMode = false;
-      _transferToEdit = transfer;
+      _isDetailLoading = true;
     });
+
+    try {
+      final freshTransfer = await _transferService.getTransfer(
+        transfer.transferId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _transferToEdit = freshTransfer;
+        _editingStatus = freshTransfer.status;
+        _isEditMode = edit;
+        _isViewMode = !edit;
+        _isDetailLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isDetailLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load transfer details: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
-  void onEditTransfer(AccountTransfer transfer) {
-    setState(() {
-      _isEditMode = true;
-      _isViewMode = false;
-      _transferToEdit = transfer;
-    });
+  void onViewTransfer(Transfer transfer) {
+    _openTransferDetail(transfer, edit: false);
   }
 
-  void _saveEditedTransfer(AccountTransfer updatedTransfer) {
-    final index = allTransfers.indexWhere((t) => t.id == _transferToEdit!.id);
+  void onEditTransfer(Transfer transfer) {
+    _openTransferDetail(transfer, edit: true);
+  }
+
+  void _saveEditedTransfer(Transfer updatedTransfer) {
+    final index = allTransfers.indexWhere(
+      (t) => t.transferId == _transferToEdit!.transferId,
+    );
     if (index != -1) {
       setState(() {
         allTransfers[index] = updatedTransfer;
         _isEditMode = false;
         _isViewMode = false;
         _transferToEdit = null;
+        _editingStatus = null;
         _applyFilters();
         _updatePagination();
       });
@@ -313,37 +880,208 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
       _isEditMode = false;
       _isViewMode = false;
       _transferToEdit = null;
+      _editingStatus = null;
+      _isDetailLoading = false;
     });
   }
 
-  Future<void> deleteTransfer(AccountTransfer transfer) async {
-    final shouldDelete = await showDialog<bool>(
+  /// Get current logged-in user ID from secure storage
+  /// Falls back to mock user ID if not available
+  Future<String> _getCurrentUserId() async {
+    try {
+      // Try to get user ID from secure storage
+      // Note: You may need to store user_id during login
+      final userId = await SecureStorage.read('user_id');
+      if (userId != null && userId.isNotEmpty) {
+        return userId;
+      }
+
+      // Fallback to provided default user ID when secure storage is empty
+      const defaultUserId = '123e4567-e89b-12d3-a456-426614174000';
+      print(
+        '⚠️ Warning: user_id missing in secure storage. Using default ID $defaultUserId.',
+      );
+      return defaultUserId;
+    } catch (e) {
+      const defaultUserId = '123e4567-e89b-12d3-a456-426614174000';
+      print('⚠️ Error getting user ID: $e. Using default ID $defaultUserId.');
+      return defaultUserId;
+    }
+  }
+
+  Future<void> deleteTransfer(Transfer transfer) async {
+    final reasonController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final shouldCancel = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Confirm Delete'),
-        content: Text('Are you sure you want to delete transfer ${transfer.reference}?'),
+        title: const Text('Cancel Transfer'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Are you sure you want to cancel this transfer?',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Transfer Reference: ${transfer.transferReference}',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: reasonController,
+                decoration: const InputDecoration(
+                  labelText: 'Cancellation Reason *',
+                  hintText: 'Enter reason for cancellation',
+                  border: OutlineInputBorder(),
+                ),
+                minLines: 2,
+                maxLines: 4,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Please provide a reason for cancellation';
+                  }
+                  if (value.trim().length < 5) {
+                    return 'Reason must be at least 5 characters';
+                  }
+                  return null;
+                },
+              ),
+            ],
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red,
-            ),
-            child: const Text('Delete'),
+            onPressed: () {
+              if (formKey.currentState?.validate() ?? false) {
+                Navigator.of(ctx).pop(true);
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Yes, Cancel Transfer'),
           ),
         ],
       ),
     );
-    if (shouldDelete == true) {
-      setState(() {
-        allTransfers.removeWhere((t) => t.id == transfer.id);
-        _applyFilters();
-        _updatePagination();
-      });
+
+    if (shouldCancel == true) {
+      final reason = reasonController.text.trim();
+
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                ),
+                SizedBox(width: 12),
+                Text('Cancelling transfer...'),
+              ],
+            ),
+            duration: Duration(seconds: 30),
+          ),
+        );
+      }
+
+      try {
+        // Get current logged-in user ID
+        final userId = await _getCurrentUserId();
+
+        print('🔄 Attempting to cancel transfer:');
+        print('   Transfer ID: ${transfer.transferId}');
+        print('   User ID: $userId');
+        print('   Reason: $reason');
+
+        // Call cancel API with correct parameters
+        await _transferService.cancelTransfer(
+          transfer.transferId,
+          userId,
+          reason,
+        );
+
+        if (mounted) {
+          // Hide loading indicator
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+          // Show success message
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Transfer ${transfer.transferReference} cancelled successfully',
+              ),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+
+          // Refresh both stats and transfers list
+          await Future.wait([_loadStats(), _loadTransfers()]);
+        }
+      } catch (e) {
+        print('❌ Error cancelling transfer: $e');
+
+        if (mounted) {
+          // Hide loading indicator
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+          // Extract error message
+          String errorMessage = 'Failed to cancel transfer';
+          if (e.toString().contains('Exception:')) {
+            errorMessage = e.toString().replaceAll('Exception:', '').trim();
+          } else {
+            errorMessage = e.toString();
+          }
+
+          // Show error message
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Failed to Cancel Transfer',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(errorMessage),
+                ],
+              ),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'Dismiss',
+                textColor: Colors.white,
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                },
+              ),
+            ),
+          );
+        }
+      }
     }
+
+    // Dispose controller
+    reasonController.dispose();
   }
 
   @override
@@ -352,38 +1090,36 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      body: _transferToEdit != null
+      body: _isDetailLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _transferToEdit != null
           ? (_isEditMode
-          ? EditTransferContent(
-        transfer: _transferToEdit!,
-        onSave: _saveEditedTransfer,
-        onCancel: _cancelEdit,
-      )
-          : ViewTransferDetail(
-        transfer: _transferToEdit!,
-        onClose: _cancelEdit,
-      ))
+                ? _buildTransferEditView(context, _transferToEdit!)
+                : _buildTransferDetailView(context, _transferToEdit!))
           : LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeader(context, constraints),
-                  const SizedBox(height: 16),
-                  _buildStatsCards(context, constraints),
-                  const SizedBox(height: 16),
-                  _buildQuickActions(context, constraints),
-                  const SizedBox(height: 16),
-                  _buildTableSection(context, constraints),
-                ],
-              ),
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 16,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildHeader(context, constraints),
+                        const SizedBox(height: 16),
+                        _buildStatsCards(context, constraints),
+                        const SizedBox(height: 16),
+                        _buildQuickActions(context, constraints),
+                        const SizedBox(height: 16),
+                        _buildTableSection(context, constraints),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
-          );
-        },
-      ),
     );
   }
 
@@ -397,10 +1133,7 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colorScheme.outline,
-          width: 0.5,
-        ),
+        border: Border.all(color: colorScheme.outline, width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -443,8 +1176,12 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
               ),
               if (!isSmallScreen) ...[
                 const SizedBox(width: 16),
-                OutlineButton(
-                  onPressed: () => Navigator.pop(context),
+                SecondaryButton(
+                  onPressed: () {
+                    if (Navigator.canPop(context)) {
+                      Navigator.pop(context);
+                    }
+                  },
                   icon: Icons.arrow_back,
                   label: 'Back',
                 ),
@@ -453,8 +1190,12 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
           ),
           if (isSmallScreen) ...[
             const SizedBox(height: 16),
-            OutlineButton(
-              onPressed: () => Navigator.pop(context),
+            SecondaryButton(
+              onPressed: () {
+                if (Navigator.canPop(context)) {
+                  Navigator.pop(context);
+                }
+              },
               icon: Icons.arrow_back,
               label: 'Back',
             ),
@@ -465,18 +1206,21 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
             runSpacing: 12,
             children: [
               PrimaryButton(
-                onPressed: () {
-                  Navigator.push(
+                onPressed: () async {
+                  final result = await Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => const CreateTransferPage(),
                     ),
                   );
+                  if (result == true) {
+                    _loadTransfers();
+                  }
                 },
                 icon: Icons.add,
                 label: 'New Transfer',
               ),
-              OutlineButton(
+              SecondaryButton(
                 onPressed: () {
                   Navigator.push(
                     context,
@@ -488,7 +1232,7 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
                 icon: Icons.account_balance_wallet,
                 label: 'Escrow Accounts',
               ),
-              OutlineButton(
+              SecondaryButton(
                 onPressed: () {
                   Navigator.push(
                     context,
@@ -521,25 +1265,25 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
       {
         'icon': Icons.sync_alt,
         'label': 'Total Transfers',
-        'value': '${allTransfers.length}',
+        'value': '$totalTransfers',
         'color': Colors.blue,
       },
       {
         'icon': Icons.pending_actions,
         'label': 'Pending Approval',
-        'value': '${allTransfers.where((t) => t.status == "Pending Approval").length}',
+        'value': '$pendingApproval',
         'color': Colors.orange,
       },
       {
         'icon': Icons.check_circle,
         'label': 'Completed',
-        'value': '${allTransfers.where((t) => t.status == "Completed").length}',
+        'value': '$completed',
         'color': Colors.green,
       },
       {
-        'icon': Icons.currency_rupee,
+        'icon': Icons.hourglass_empty,
         'label': 'Total Amount',
-        'value': '₹0.00',
+        'value': '$totalAmount',
         'color': Colors.cyan,
       },
     ];
@@ -551,7 +1295,9 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
         crossAxisCount: crossAxisCount,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
-        childAspectRatio: crossAxisCount == 1 ? 4.0 : (crossAxisCount == 2 ? 2.5 : 2.2),
+        childAspectRatio: crossAxisCount == 1
+            ? 4.0
+            : (crossAxisCount == 2 ? 2.5 : 2.2),
       ),
       itemCount: stats.length,
       itemBuilder: (context, index) {
@@ -569,13 +1315,13 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
   }
 
   Widget _buildStatCard(
-      BuildContext context, {
-        required int index,
-        required IconData icon,
-        required String label,
-        required String value,
-        required Color color,
-      }) {
+    BuildContext context, {
+    required int index,
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
     final isHovered = _hoveredCardIndex == index;
@@ -605,12 +1351,12 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
           ),
           boxShadow: isHovered
               ? [
-            BoxShadow(
-              color: colorScheme.primary.withValues(alpha: 0.15),
-              blurRadius: 16,
-              offset: const Offset(0, 4),
-            ),
-          ]
+                  BoxShadow(
+                    color: colorScheme.primary.withValues(alpha: 0.15),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
               : [],
         ),
         child: Column(
@@ -659,9 +1405,7 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
         'onTap': () {
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => CreateTransferPage(),
-            ),
+            MaterialPageRoute(builder: (context) => const CreateTransferPage()),
           );
         },
       },
@@ -672,9 +1416,7 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
         'onTap': () {
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => CreateTransferPage(),
-            ),
+            MaterialPageRoute(builder: (context) => const CreateTransferPage()),
           );
         },
       },
@@ -711,21 +1453,14 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colorScheme.outline,
-          width: 0.5,
-        ),
+        border: Border.all(color: colorScheme.outline, width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(
-                Icons.flash_on,
-                color: Colors.orange,
-                size: 20,
-              ),
+              const Icon(Icons.flash_on, color: Colors.orange, size: 20),
               const SizedBox(width: 8),
               Text(
                 'Quick Transfer Actions',
@@ -739,55 +1474,59 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
           const SizedBox(height: 16),
           isSmallScreen
               ? Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: quickActions.asMap().entries.map((entry) {
-              final index = entry.key;
-              final action = entry.value;
-              return Padding(
-                padding: EdgeInsets.only(bottom: index < quickActions.length - 1 ? 12 : 0),
-                child: _buildQuickActionButton(
-                  context,
-                  index: index,
-                  icon: action['icon'] as IconData,
-                  label: action['label'] as String,
-                  color: action['color'] as Color,
-                  onTap: action['onTap'] as VoidCallback,
-                ),
-              );
-            }).toList(),
-          )
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: quickActions.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final action = entry.value;
+                    return Padding(
+                      padding: EdgeInsets.only(
+                        bottom: index < quickActions.length - 1 ? 12 : 0,
+                      ),
+                      child: _buildQuickActionButton(
+                        context,
+                        index: index,
+                        icon: action['icon'] as IconData,
+                        label: action['label'] as String,
+                        color: action['color'] as Color,
+                        onTap: action['onTap'] as VoidCallback,
+                      ),
+                    );
+                  }).toList(),
+                )
               : Row(
-            children: quickActions.asMap().entries.map((entry) {
-              final index = entry.key;
-              final action = entry.value;
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(right: index < quickActions.length - 1 ? 12 : 0),
-                  child: _buildQuickActionButton(
-                    context,
-                    index: index,
-                    icon: action['icon'] as IconData,
-                    label: action['label'] as String,
-                    color: action['color'] as Color,
-                    onTap: action['onTap'] as VoidCallback,
-                  ),
+                  children: quickActions.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final action = entry.value;
+                    return Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          right: index < quickActions.length - 1 ? 12 : 0,
+                        ),
+                        child: _buildQuickActionButton(
+                          context,
+                          index: index,
+                          icon: action['icon'] as IconData,
+                          label: action['label'] as String,
+                          color: action['color'] as Color,
+                          onTap: action['onTap'] as VoidCallback,
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
-              );
-            }).toList(),
-          ),
         ],
       ),
     );
   }
 
   Widget _buildQuickActionButton(
-      BuildContext context, {
-        required int index,
-        required IconData icon,
-        required String label,
-        required Color color,
-        required VoidCallback onTap,
-      }) {
+    BuildContext context, {
+    required int index,
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
     final isHovered = _hoveredButtonIndex == index;
@@ -813,28 +1552,30 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
           decoration: BoxDecoration(
             color: colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
-          ),
-          child: AnimatedOpacity(
-            duration: const Duration(milliseconds: 200),
-            opacity: isHovered ? 0.7 : 1.0,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, color: color, size: 20),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    label,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: color,
-                    ),
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
+            border: Border.all(
+              color: isHovered
+                  ? color.withValues(alpha: 0.5)
+                  : colorScheme.outline.withValues(alpha: 0.3),
+              width: 1,
             ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: color,
+                  ),
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -851,21 +1592,14 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colorScheme.outline,
-          width: 0.5,
-        ),
+        border: Border.all(color: colorScheme.outline, width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(
-                Icons.table_chart,
-                color: colorScheme.primary,
-                size: 20,
-              ),
+              Icon(Icons.table_chart, color: colorScheme.primary, size: 20),
               const SizedBox(width: 8),
               Text(
                 'All Transfers',
@@ -876,13 +1610,15 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
               ),
               const Spacer(),
               if (!isSmallScreen) ...[
-                OutlineButton(
+                SecondaryButton(
                   onPressed: _showFilterDialog,
                   icon: Icons.filter_list,
-                  label: statusFilter == null ? 'Filter' : 'Filter: $statusFilter',
+                  label: statusFilter == null
+                      ? 'Filter'
+                      : 'Filter: $statusFilter',
                 ),
                 const SizedBox(width: 8),
-                OutlineButton(
+                SecondaryButton(
                   onPressed: _refreshData,
                   icon: Icons.refresh,
                   label: 'Refresh',
@@ -895,15 +1631,17 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
             Row(
               children: [
                 Expanded(
-                  child: OutlineButton(
+                  child: SecondaryButton(
                     onPressed: _showFilterDialog,
                     icon: Icons.filter_list,
-                    label: statusFilter == null ? 'Filter' : 'Filter: $statusFilter',
+                    label: statusFilter == null
+                        ? 'Filter'
+                        : 'Filter: $statusFilter',
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: OutlineButton(
+                  child: SecondaryButton(
                     onPressed: _refreshData,
                     icon: Icons.refresh,
                     label: 'Refresh',
@@ -998,50 +1736,82 @@ class _AccountTransfersPageState extends State<AccountTransfersPage> {
             rows: paginatedTransfers.isEmpty
                 ? []
                 : paginatedTransfers.asMap().entries.map((entry) {
-              final index = entry.key;
-              final transfer = entry.value;
-              return DataRow(
-                cells: [
-                  DataCell(Text('${currentPage * rowsPerPage + index + 1}')),
-                  DataCell(Text(transfer.reference)),
-                  DataCell(Text(transfer.fromAccount)),
-                  DataCell(Text(transfer.toAccount)),
-                  DataCell(Text(transfer.amount)),
-                  DataCell(
-                    BadgeChip(
-                      label: transfer.status,
-                      type: ChipType.status,
-                      statusKey: transfer.status,
-                      statusColorFunc: _getStatusColor,
-                    ),
-                  ),
-                  DataCell(Text(transfer.requestedBy)),
-                  DataCell(
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.visibility, size: 18),
-                          onPressed: () => onViewTransfer(transfer),
-                          tooltip: 'View',
+                    final index = entry.key;
+                    final transfer = entry.value;
+                    // Extract display data from transferLegs
+                    final firstLeg = transfer.transferLegs.isNotEmpty
+                        ? transfer.transferLegs.first
+                        : null;
+                    final fromAccount =
+                        transfer.sourceAccountName ??
+                        firstLeg?.sourceAccount?.accountName ??
+                        firstLeg?.sourceAccountId ??
+                        transfer.sourceAccountId ??
+                        '-';
+                    final toAccount =
+                        transfer.destinationAccountName ??
+                        firstLeg?.destinationAccount?.accountName ??
+                        firstLeg?.destinationVendor?.name ??
+                        firstLeg?.destinationAccountId ??
+                        firstLeg?.destinationVendorId ??
+                        transfer.destinationAccountId ??
+                        '-';
+                    final statusString = transfer.status
+                        .toString()
+                        .split('.')
+                        .last;
+
+                    return DataRow(
+                      cells: [
+                        DataCell(
+                          Text('${currentPage * rowsPerPage + index + 1}'),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.edit, size: 18),
-                          onPressed: () => onEditTransfer(transfer),
-                          tooltip: 'Edit',
+                        DataCell(Text(transfer.transferReference)),
+                        DataCell(Text(fromAccount)),
+                        DataCell(Text(toAccount)),
+                        DataCell(
+                          Text('₹${transfer.totalAmount.toStringAsFixed(2)}'),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.delete, size: 18),
-                          onPressed: () => deleteTransfer(transfer),
-                          tooltip: 'Delete',
-                          color: Theme.of(context).colorScheme.error,
+                        DataCell(
+                          BadgeChip(
+                            label: statusString,
+                            type: ChipType.status,
+                            statusKey: statusString,
+                            statusColorFunc: _getStatusColor,
+                          ),
+                        ),
+                        DataCell(
+                          Text(
+                            transfer.requestedBy?.name ??
+                                transfer.requestedById,
+                          ),
+                        ),
+                        DataCell(
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.visibility, size: 18),
+                                onPressed: () => onViewTransfer(transfer),
+                                tooltip: 'View',
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.edit, size: 18),
+                                onPressed: () => onEditTransfer(transfer),
+                                tooltip: 'Edit',
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete, size: 18),
+                                onPressed: () => deleteTransfer(transfer),
+                                tooltip: 'Delete',
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            ],
+                          ),
                         ),
                       ],
-                    ),
-                  ),
-                ],
-              );
-            }).toList(),
+                    );
+                  }).toList(),
             minTableWidth: 1100,
           ),
           if (paginatedTransfers.isEmpty) ...[
